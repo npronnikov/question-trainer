@@ -7,9 +7,7 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
-  const API_BASE = location.protocol === 'file:' || (location.hostname === 'localhost' && ['8090', '5500'].includes(location.port))
-    ? 'http://localhost:8080/api'
-    : '/api';
+  const API_BASE = location.protocol === 'file:' ? 'http://localhost:8080/api' : '/api';
 
   let currentTheoryId = categories[0]?.id;
   let trainerCard = null;

@@ -16,6 +16,32 @@ docker compose up --build
 
 Откройте `http://localhost:8088`.
 
+## Локальный запуск с авторизованным Codex
+
+Требования: Java 21, Maven 3.9+, Node.js/npm и установленный, авторизованный
+Codex CLI (`codex login`).
+
+```bash
+./scripts/run-local.sh
+```
+
+Откройте `http://localhost:8090`. Скрипт запускает Spring Boot на порту 8081,
+локальный frontend-сервер на 8090 и `@agentclientprotocol/codex-acp` через
+`npx`. Переменная `CODEX_PATH` указывает адаптеру на установленный в системе
+`codex`, поэтому используется его локальная авторизация из `~/.codex`.
+
+По умолчанию агент работает в режиме `read-only`. Команду ACP, frontend-порт
+и модель можно переопределить:
+
+```bash
+FRONTEND_PORT=8091 \
+SERVER_PORT=8082 \
+CODEX_CONFIG='{"model":"gpt-5.6-terra"}' \
+./scripts/run-local.sh
+```
+
+Остановить оба процесса можно через `Ctrl+C`.
+
 Без Docker фронтенд можно открыть отдельно:
 
 ```bash

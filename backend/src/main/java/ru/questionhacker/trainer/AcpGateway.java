@@ -51,7 +51,7 @@ public class AcpGateway {
 
         var chunks = new StringBuilder();
         var capabilities = new ClientCapabilities(new FileSystemCapability(true, true), false);
-        builder.addEnvVar("NO_BROWSER", System.getenv().getOrDefault("NO_BROWSER", "1"));
+        addEnvIfPresent(builder, "NO_BROWSER");
         builder.addEnvVar("INITIAL_AGENT_MODE", System.getenv().getOrDefault("INITIAL_AGENT_MODE", "read-only"));
         var transport = new StdioAcpClientTransport(builder.build());
 
@@ -96,6 +96,13 @@ public class AcpGateway {
     private boolean present(String name) {
         String value = System.getenv(name);
         return value != null && !value.isBlank();
+    }
+
+    private void addEnvIfPresent(AgentParameters.Builder builder, String name) {
+        String value = System.getenv(name);
+        if (value != null && !value.isBlank()) {
+            builder.addEnvVar(name, value);
+        }
     }
 
     public boolean enabled() {
