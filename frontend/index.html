@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10110f">
+  <meta name="description" content="Теория, карточки и ACP-коуч по вопросам-взломщикам">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <title>Вопросы-взломщики — тренажёр</title>
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+  <header class="topbar">
+    <a class="brand" href="#theory" data-route="theory" aria-label="На главную">
+      <span class="brand-mark">?</span>
+      <span class="brand-copy"><strong>QUESTION / HACK</strong><small>практика нестандартного мышления</small></span>
+    </a>
+    <nav class="main-nav" aria-label="Разделы">
+      <button class="nav-link is-active" data-route="theory">Теория</button>
+      <button class="nav-link" data-route="trainer">Тренажёр</button>
+      <button class="nav-link" data-route="coach">Обучение</button>
+    </nav>
+    <div class="header-meta">
+      <span class="connection-dot" id="connection-dot"></span>
+      <span id="connection-label">офлайн-ядро готово</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="view is-active" id="view-theory" data-view="theory">
+      <div class="hero shell">
+        <div class="hero-kicker">Не ищите ответ слишком рано</div>
+        <h1>Сначала <em>взломайте</em><br>сам вопрос.</h1>
+        <p class="hero-lead">Семь способов выйти из автопилота: перевернуть цель, изменить масштаб, позаимствовать чужую механику, заглянуть из будущего, сломать правило, сменить рамку или отрезать всё лишнее.</p>
+        <div class="hero-actions">
+          <button class="primary-button" data-route="trainer">Начать тренировку <span>↗</span></button>
+          <button class="text-button" data-scroll="theory-grid">Изучить техники ↓</button>
+        </div>
+        <div class="hero-stats" aria-label="Состав курса">
+          <div><strong>7</strong><span>базовых категорий</span></div>
+          <div><strong>28</strong><span>офлайн-ситуаций</span></div>
+          <div><strong>1</strong><span>ACP-коуч в чате</span></div>
+        </div>
+        <div class="orbit orbit-one" aria-hidden="true">ИНВЕРСИЯ</div>
+        <div class="orbit orbit-two" aria-hidden="true">10×</div>
+      </div>
+
+      <section class="theory-intro shell">
+        <div class="section-number">01 / ТЕОРИЯ</div>
+        <div>
+          <h2>Семь разных движений мысли</h2>
+          <p>Категория определяется не темой вопроса, а тем, <strong>что именно он делает с исходной рамкой</strong>. Нажмите на карточку и разберите механизм, формулу и анти-паттерн.</p>
+        </div>
+      </section>
+
+      <div class="theory-layout shell" id="theory-grid">
+        <div class="category-rail" id="category-rail" role="tablist" aria-label="Категории"></div>
+        <article class="theory-detail" id="theory-detail" aria-live="polite"></article>
+      </div>
+
+      <section class="compare-section shell">
+        <div class="section-number">ШПАРГАЛКА</div>
+        <h2>Как не перепутать соседние техники</h2>
+        <div class="compare-grid">
+          <article><span>Инверсия</span><strong>Меняет направление цели</strong><p>«Как всё провалить?» — затем перевести причины в защиту.</p></article>
+          <article><span>Провокация</span><strong>Убирает правило</strong><p>«А почему мы вообще обязаны это делать?»</p></article>
+          <article><span>Гипербола</span><strong>Меняет параметр</strong><p>0 бюджета, 100× спроса, дедлайн завтра.</p></article>
+          <article><span>Упрощение</span><strong>Убирает элементы</strong><p>Оставить ядро ценности, а не просто сделать дешевле.</p></article>
+        </div>
+      </section>
+    </section>
+
+    <section class="view" id="view-trainer" data-view="trainer">
+      <div class="trainer-shell shell">
+        <header class="trainer-header">
+          <div>
+            <div class="section-number">02 / ОФЛАЙН-ТРЕНАЖЁР</div>
+            <h1>Определите движение,<br>а не тему вопроса.</h1>
+          </div>
+          <div class="scoreboard">
+            <div><span>очки</span><strong id="score-value">0</strong></div>
+            <div><span>серия</span><strong id="streak-value">0</strong></div>
+            <div><span>точность</span><strong id="accuracy-value">—</strong></div>
+          </div>
+        </header>
+
+        <div class="progress-track" aria-label="Прогресс">
+          <span id="progress-fill"></span>
+        </div>
+        <div class="trainer-meta"><span id="card-counter">Карточка 1 из 28</span><button id="reset-progress" class="text-button danger">Сбросить прогресс</button></div>
+
+        <div class="training-stage">
+          <div class="flip-card" id="flip-card">
+            <div class="flip-inner">
+              <article class="card-face card-front">
+                <div class="card-label"><span>СИТУАЦИЯ</span><small id="scenario-domain">ПРОДУКТ</small></div>
+                <p class="scenario-text" id="scenario-text"></p>
+                <blockquote id="scenario-question"></blockquote>
+                <div class="answer-grid" id="answer-grid"></div>
+                <p class="card-hint">Выберите основную категорию. После ответа карточка перевернётся.</p>
+              </article>
+              <article class="card-face card-back">
+                <div class="result-mark" id="result-mark">Верно</div>
+                <div class="answer-number" id="answer-number">01</div>
+                <h2 id="answer-title">Инверсия</h2>
+                <p class="answer-tagline" id="answer-tagline"></p>
+                <div class="answer-explanation" id="answer-explanation"></div>
+                <div class="back-actions">
+                  <button class="primary-button" id="next-card">Следующая карточка <span>→</span></button>
+                  <button class="text-button" id="open-theory">Открыть теорию</button>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-coach" data-view="coach">
+      <div class="coach-shell">
+        <aside class="chat-sidebar">
+          <div class="sidebar-head">
+            <div>
+              <span class="eyebrow">03 / ОБУЧЕНИЕ</span>
+              <h2>Диалоги</h2>
+            </div>
+            <button class="icon-button" id="new-session" title="Новый диалог" aria-label="Новый диалог">＋</button>
+          </div>
+          <div class="session-list" id="session-list"></div>
+          <div class="agent-card">
+            <div class="agent-card-head"><span class="connection-dot" id="agent-dot"></span><strong>ACP agent</strong></div>
+            <p id="agent-status">Проверяем backend…</p>
+            <code id="agent-command">—</code>
+          </div>
+        </aside>
+
+        <section class="chat-main">
+          <header class="chat-header">
+            <div><span class="eyebrow">ЛОНГРИД-ЧАТ</span><h1 id="chat-title">Тренер вопросов</h1></div>
+            <button class="secondary-button" id="generate-scenarios">+ 7 ситуаций</button>
+          </header>
+
+          <div class="message-feed" id="message-feed" aria-live="polite">
+            <article class="welcome-panel" id="chat-welcome">
+              <div class="welcome-symbol">?</div>
+              <h2>Принесите реальную задачу.<br>Мы взломаем её рамку.</h2>
+              <p>Коуч выберет подходящие категории, предложит точные вопросы, покажет анти-паттерн и даст микро-эксперимент на 24–48 часов.</p>
+              <div class="suggestion-grid">
+                <button data-prompt="Команда месяцами улучшает онбординг, но активация не растёт. Помоги выбрать вопросы-взломщики.">Онбординг не растёт</button>
+                <button data-prompt="Мы хотим найти риски перед запуском новой B2B-платформы. Проведи меня через инверсию и premortem.">Найти риски запуска</button>
+                <button data-prompt="Продукт перегружен функциями. Как с помощью упрощения и первых принципов найти ядро ценности?">Упростить продукт</button>
+                <button data-prompt="Нужна прорывная идея для корпоративного обучения. Используй кросс-дисциплину и гиперболу.">Найти прорывную идею</button>
+              </div>
+            </article>
+          </div>
+
+          <form class="composer" id="composer">
+            <textarea id="message-input" rows="1" maxlength="12000" placeholder="Опишите задачу, решение или тупик…" aria-label="Сообщение"></textarea>
+            <div class="composer-footer">
+              <span><kbd>Enter</kbd> отправить · <kbd>Shift</kbd> + <kbd>Enter</kbd> новая строка</span>
+              <button class="send-button" id="send-message" type="submit" aria-label="Отправить">↑</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="data/theory.js"></script>
+  <script src="data/scenarios.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

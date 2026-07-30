@@ -1,0 +1,41 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: question-hacker-backend
+  datasource:
+    url: jdbc:h2:file:${APP_DATA_DIR:./data}/question-hacker;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  sql:
+    init:
+      mode: always
+  h2:
+    console:
+      enabled: true
+      settings:
+        web-allow-others: false
+  jackson:
+    default-property-inclusion: non_null
+
+app:
+  acp:
+    enabled: ${ACP_ENABLED:true}
+    fallback-enabled: ${ACP_FALLBACK_ENABLED:true}
+    command: ${ACP_AGENT_COMMAND:npx}
+    args: ${ACP_AGENT_ARGS:-y,@agentclientprotocol/codex-acp}
+    workspace: ${ACP_WORKSPACE:./workspace}
+    timeout: ${ACP_TIMEOUT:180s}
+    max-file-bytes: 524288
+    forward-env: CODEX_API_KEY,OPENAI_API_KEY,ANTHROPIC_API_KEY,GEMINI_API_KEY
+  chat:
+    max-message-chars: 12000
+    history-limit: 24
+
+logging:
+  level:
+    ru.questionhacker.trainer: INFO
+    com.agentclientprotocol: WARN
