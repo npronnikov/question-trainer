@@ -9,6 +9,7 @@ import static com.agentclientprotocol.sdk.spec.AcpSchema.NewSessionRequest;
 import static com.agentclientprotocol.sdk.spec.AcpSchema.PromptRequest;
 import static com.agentclientprotocol.sdk.spec.AcpSchema.ReadTextFileResponse;
 import static com.agentclientprotocol.sdk.spec.AcpSchema.TextContent;
+import static com.agentclientprotocol.sdk.spec.AcpSchema.SetSessionModelRequest;
 import static com.agentclientprotocol.sdk.spec.AcpSchema.WriteTextFileResponse;
 
 import java.util.List;
@@ -35,7 +36,7 @@ public class AcpGateway {
         this.workspace = workspace;
     }
 
-    public String ask(String prompt, Consumer<String> onChunk) {
+    public String ask(String prompt, String model, Consumer<String> onChunk) {
         if (!properties.acp().enabled()) {
             throw new IllegalStateException("ACP отключён настройкой ACP_ENABLED=false");
         }
@@ -77,6 +78,9 @@ public class AcpGateway {
                 client.authenticate(new AuthenticateRequest("api-key"));
             }
             var session = client.newSession(new NewSessionRequest(workspace.root().toString(), List.of()));
+            if (model != null && !model.isBlank()) {
+                client.setSessionModel(new SetSessionModelRequest(session.sessionId(), model));
+            }
             client.prompt(new PromptRequest(session.sessionId(), List.of(new TextContent(prompt))));
         } catch (RuntimeException error) {
             log.warn("ACP agent failed: {}", error.toString());

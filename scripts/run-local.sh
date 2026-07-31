@@ -20,17 +20,26 @@ export BACKEND_URL="${BACKEND_URL:-http://localhost:$SERVER_PORT}"
 
 backend_pid=""
 frontend_pid=""
+cleaned_up=false
 
 cleanup() {
+  if [[ "$cleaned_up" == true ]]; then
+    return
+  fi
+  cleaned_up=true
+
+  echo
+  echo "Останавливаем frontend и backend…"
   [[ -n "$frontend_pid" ]] && kill "$frontend_pid" 2>/dev/null || true
   [[ -n "$backend_pid" ]] && kill "$backend_pid" 2>/dev/null || true
-  wait 2>/dev/null || true
+  [[ -n "$frontend_pid" ]] && wait "$frontend_pid" 2>/dev/null || true
+  [[ -n "$backend_pid" ]] && wait "$backend_pid" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
 (
   cd "$project_dir/backend"
-  mvn spring-boot:run
+  exec mvn spring-boot:run
 ) &
 backend_pid=$!
 

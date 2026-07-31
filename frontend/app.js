@@ -17,6 +17,7 @@
   let chatInitialized = false;
   let currentSessionId = null;
   let sending = false;
+  let selectedModel = null;
 
   const progress = loadProgress();
 
@@ -234,11 +235,21 @@
         ? 'Java-клиент готов запускать ACP-совместимого агента.'
         : 'ACP выключен; ответы даст встроенный методический fallback.';
       $('#agent-command').textContent = status.agentCommand;
+      renderModelOptions(status.models || [], status.defaultModel);
     } catch (error) {
       $('#connection-label').textContent = 'backend недоступен';
       $('#agent-status').textContent = 'Теория и карточки работают офлайн. Для чата запустите backend.';
       $('#agent-command').textContent = 'java backend → :8080';
     }
+  }
+
+  function renderModelOptions(models, defaultModel) {
+    const select = $('#model-select');
+    const saved = localStorage.getItem('qh-coach-model');
+    selectedModel = models.includes(saved) ? saved : (models.includes(defaultModel) ? defaultModel : models[0]);
+    select.innerHTML = models.map(model => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`).join('');
+    select.value = selectedModel || '';
+    select.disabled = !models.length;
   }
 
   async function loadSessions(preferredId = null) {
@@ -350,7 +361,7 @@
 
     try {
       const { runId } = await api(`/chat/sessions/${currentSessionId}/messages`, {
-        method: 'POST', body: JSON.stringify({ text })
+        method: 'POST', body: JSON.stringify({ text, model: selectedModel })
       });
       consumeRun(runId, streamMessage);
     } catch (error) {
@@ -427,6 +438,11 @@
       } catch (error) { showToast(error.message); }
     });
     $('#generate-scenarios').addEventListener('click', generateMoreScenarios);
+    $('#model-select').addEventListener('change', event => {
+      selectedModel = event.target.value;
+      localStorage.setItem('qh-coach-model', selectedModel);
+      showToast(`Модель: ${selectedModel}`);
+    });
     bindSuggestions();
   }
 

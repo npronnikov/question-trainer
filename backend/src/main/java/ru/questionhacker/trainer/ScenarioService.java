@@ -37,7 +37,8 @@ public class ScenarioService {
         int count = Math.max(1, Math.min(20, requestedCount));
         try {
             String raw = acp.ask(prompts.scenarioGenerator()
-                    + "\n\nКоличество элементов: " + count + ".", ignored -> { });
+                    + "\n\nКоличество элементов: " + count + ".",
+                    properties.acp().defaultModel(), ignored -> { });
             List<GeneratedInput> inputs = mapper.readValue(extractArray(raw), new TypeReference<>() { });
             var saved = new ArrayList<DatabaseStore.ScenarioRow>();
             for (GeneratedInput input : inputs.stream().limit(count).toList()) {

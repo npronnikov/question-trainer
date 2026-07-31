@@ -41,7 +41,7 @@ public class ChatService {
         return store.createSession(safeTitle.substring(0, Math.min(180, safeTitle.length())));
     }
 
-    public UUID send(UUID sessionId, String text) {
+    public UUID send(UUID sessionId, String text, String model) {
         var session = requireSession(sessionId);
         String clean = text == null ? "" : text.strip();
         if (clean.isBlank()) {
@@ -56,16 +56,17 @@ public class ChatService {
             store.touchSession(sessionId, makeTitle(clean));
         }
         UUID runId = streams.create();
-        executor.submit(() -> execute(runId, sessionId, clean));
+        String selectedModel = validateModel(model);
+        executor.submit(() -> execute(runId, sessionId, clean, selectedModel));
         return runId;
     }
 
-    private void execute(UUID runId, UUID sessionId, String userText) {
+    private void execute(UUID runId, UUID sessionId, String userText, String model) {
         var streamed = new AtomicBoolean(false);
         var partial = new StringBuilder();
         try {
             String prompt = buildPrompt(sessionId);
-            String answer = acp.ask(prompt, chunk -> {
+            String answer = acp.ask(prompt, model, chunk -> {
                 streamed.set(true);
                 partial.append(chunk);
                 streams.delta(runId, chunk);
@@ -88,6 +89,17 @@ public class ChatService {
                 streams.error(runId, "ACP-агент недоступен: " + safe(error.getMessage()));
             }
         }
+    }
+
+    private String validateModel(String requested) {
+        String model = requested == null || requested.isBlank()
+                ? properties.acp().defaultModel()
+                : requested.strip();
+        if (model == null || model.isBlank()) return null;
+        if (!properties.acp().models().contains(model)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестная модель: " + model);
+        }
+        return model;
     }
 
     private String buildPrompt(UUID sessionId) {

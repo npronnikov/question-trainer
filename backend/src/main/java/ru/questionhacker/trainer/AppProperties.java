@@ -16,7 +16,9 @@ public record AppProperties(Acp acp, Chat chat) {
             String workspace,
             Duration timeout,
             long maxFileBytes,
-            List<String> forwardEnv) {
+            List<String> forwardEnv,
+            List<String> models,
+            String defaultModel) {
     }
 
     public record Chat(int maxMessageChars, int historyLimit) {

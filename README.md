@@ -71,6 +71,8 @@ H2 создаёт файл `backend/data/question-hacker.mv.db`. Консоль 
 - `ACP_AGENT_ARGS` — CSV-список аргументов
 - `ACP_WORKSPACE`
 - `ACP_TIMEOUT`
+- `ACP_MODELS` — CSV-список моделей, доступных в селекторе режима `#coach`
+- `ACP_DEFAULT_MODEL` — модель, выбранная по умолчанию
 - `CODEX_API_KEY` или `OPENAI_API_KEY` для `codex-acp`
 
 Приложение рекламирует агенту только чтение/запись текста в пределах `ACP_WORKSPACE`. Доступ за пределы workspace блокируется, размер читаемого/записываемого файла ограничен 512 КиБ. Терминал и автоматическое подтверждение опасных операций не включены. Для дефолтного адаптера также задаются `NO_BROWSER=1` и `INITIAL_AGENT_MODE=read-only`.

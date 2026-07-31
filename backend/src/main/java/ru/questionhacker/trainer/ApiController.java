@@ -46,6 +46,8 @@ public class ApiController {
                 acp.enabled(),
                 properties.acp().fallbackEnabled(),
                 acp.commandDescription(),
+                properties.acp().models(),
+                properties.acp().defaultModel(),
                 "H2 file",
                 "seven-category trainer");
     }
@@ -67,7 +69,7 @@ public class ApiController {
 
     @PostMapping("/chat/sessions/{sessionId}/messages")
     public RunResponse send(@PathVariable UUID sessionId, @Valid @RequestBody SendMessageRequest request) {
-        return new RunResponse(chat.send(sessionId, request.text()));
+        return new RunResponse(chat.send(sessionId, request.text(), request.model()));
     }
 
     @GetMapping(value = "/chat/runs/{runId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -88,7 +90,8 @@ public class ApiController {
     public record CreateSessionRequest(@Size(max = 180) String title) {
     }
 
-    public record SendMessageRequest(@NotBlank @Size(max = 12000) String text) {
+    public record SendMessageRequest(@NotBlank @Size(max = 12000) String text,
+                                     @Size(max = 120) String model) {
     }
 
     public record GenerateScenariosRequest(@Min(1) @Max(20) int count) {
@@ -98,6 +101,7 @@ public class ApiController {
     }
 
     public record SystemStatus(boolean acpEnabled, boolean fallbackEnabled, String agentCommand,
+                               List<String> models, String defaultModel,
                                String database, String curriculum) {
     }
 }

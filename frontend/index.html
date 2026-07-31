@@ -139,7 +139,10 @@
         <section class="chat-main">
           <header class="chat-header">
             <div><span class="eyebrow">ЛОНГРИД-ЧАТ</span><h1 id="chat-title">Тренер вопросов</h1></div>
-            <button class="secondary-button" id="generate-scenarios">+ 7 ситуаций</button>
+            <div class="chat-actions">
+              <label class="model-picker" for="model-select"><span>Модель</span><select id="model-select" aria-label="Модель коуча" disabled><option>—</option></select></label>
+              <button class="secondary-button" id="generate-scenarios">+ 7 ситуаций</button>
+            </div>
           </header>
 
           <div class="message-feed" id="message-feed" aria-live="polite">
