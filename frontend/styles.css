@@ -206,11 +206,11 @@ button:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px sol
 .trainer-model-picker select { color: var(--paper); border-color: var(--white-line); }
 .training-stage { display: grid; place-items: center; perspective: 1600px; }
 .flip-card { width: min(920px, 100%); min-height: 610px; perspective: 1600px; }
-.flip-inner { position: relative; width: 100%; min-height: 610px; transition: transform .78s cubic-bezier(.2,.8,.2,1); transform-style: preserve-3d; }
+.flip-inner { display: grid; width: 100%; min-height: 610px; transition: transform .78s cubic-bezier(.2,.8,.2,1); transform-style: preserve-3d; }
 .flip-card.is-flipped .flip-inner { transform: rotateY(180deg); }
-.card-face { position: absolute; inset: 0; min-height: 610px; padding: clamp(28px, 5vw, 58px); border-radius: 34px; backface-visibility: hidden; box-shadow: 0 34px 90px rgba(0,0,0,.4); }
+.card-face { position: relative; grid-area: 1 / 1; min-height: 610px; padding: clamp(28px, 5vw, 58px); border-radius: 34px; backface-visibility: hidden; box-shadow: 0 34px 90px rgba(0,0,0,.4); }
 .card-front { background: var(--paper); color: var(--ink); }
-.card-back { transform: rotateY(180deg); background: var(--acid); color: var(--ink); overflow: hidden; }
+.card-back { padding-bottom: 130px; transform: rotateY(180deg); background: var(--acid); color: var(--ink); overflow: hidden; }
 .card-back::after { content: "?"; position: absolute; right: -30px; bottom: -130px; font-size: 420px; font-weight: 900; line-height: 1; color: rgba(16,17,15,.07); }
 .card-label { display: flex; justify-content: space-between; font: 10px var(--mono); letter-spacing: .12em; }
 .card-label small { padding: 6px 9px; background: var(--ink); color: var(--paper); border-radius: 999px; }
