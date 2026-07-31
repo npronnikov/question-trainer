@@ -18,6 +18,8 @@
   let currentSessionId = null;
   let sending = false;
   let selectedModel = null;
+  let coachMode = 'chat';
+  let practiceState = { scenario: null, attempt: 1, previousFeedback: '', passed: false };
 
   const progress = loadProgress();
 
@@ -182,6 +184,8 @@
 
   function bindTrainer() {
     $('#next-card')?.addEventListener('click', nextTrainerCard);
+    $('#generate-scenarios')?.addEventListener('click', generateMoreScenarios);
+    $('#trainer-model-select')?.addEventListener('change', event => selectModel(event.target.value));
     $('#open-theory')?.addEventListener('click', () => {
       currentTheoryId = trainerCard.category;
       renderTheoryRail();
@@ -244,12 +248,31 @@
   }
 
   function renderModelOptions(models, defaultModel) {
-    const select = $('#model-select');
+    const visibleModels = models.slice(0, 2);
     const saved = localStorage.getItem('qh-coach-model');
-    selectedModel = models.includes(saved) ? saved : (models.includes(defaultModel) ? defaultModel : models[0]);
-    select.innerHTML = models.map(model => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`).join('');
-    select.value = selectedModel || '';
-    select.disabled = !models.length;
+    selectedModel = visibleModels.includes(saved) ? saved : (visibleModels.includes(defaultModel) ? defaultModel : visibleModels[0]);
+    const options = visibleModels.map(model => `<option value="${escapeHtml(model)}">${escapeHtml(modelLabel(model))}</option>`).join('');
+    ['#model-select', '#trainer-model-select'].forEach(selector => {
+      const select = $(selector);
+      if (!select) return;
+      select.innerHTML = options;
+      select.value = selectedModel || '';
+      select.disabled = !visibleModels.length;
+    });
+  }
+
+  function modelLabel(model) {
+    return model.replace('[xhigh]', ' · extra high').replace('[high]', ' · high');
+  }
+
+  function selectModel(model) {
+    selectedModel = model;
+    localStorage.setItem('qh-coach-model', selectedModel);
+    ['#model-select', '#trainer-model-select'].forEach(selector => {
+      const select = $(selector);
+      if (select) select.value = selectedModel;
+    });
+    showToast(`Модель: ${modelLabel(selectedModel)}`);
   }
 
   async function loadSessions(preferredId = null) {
@@ -282,7 +305,7 @@
     currentSessionId = sessionId;
     $$('.session-item').forEach(item => item.classList.toggle('is-active', item.dataset.session === sessionId));
     const active = $(`.session-item[data-session="${sessionId}"]`);
-    $('#chat-title').textContent = active?.querySelector('strong')?.textContent || 'Тренер вопросов';
+    if (coachMode === 'chat') $('#chat-title').textContent = active?.querySelector('strong')?.textContent || 'Тренер вопросов';
     try {
       const messages = await api(`/chat/sessions/${sessionId}/messages`);
       renderMessages(messages);
@@ -437,13 +460,121 @@
         await loadSessions(session.id);
       } catch (error) { showToast(error.message); }
     });
-    $('#generate-scenarios').addEventListener('click', generateMoreScenarios);
+    $$('[data-coach-mode]').forEach(button => button.addEventListener('click', () => setCoachMode(button.dataset.coachMode)));
+    $('#start-practice').addEventListener('click', startPractice);
+    $('#new-practice').addEventListener('click', startPractice);
+    $('#practice-form').addEventListener('submit', submitPractice);
     $('#model-select').addEventListener('change', event => {
-      selectedModel = event.target.value;
-      localStorage.setItem('qh-coach-model', selectedModel);
-      showToast(`Модель: ${selectedModel}`);
+      selectModel(event.target.value);
     });
     bindSuggestions();
+  }
+
+  function setCoachMode(mode) {
+    coachMode = mode === 'practice' ? 'practice' : 'chat';
+    $$('[data-coach-mode]').forEach(button => button.classList.toggle('is-active', button.dataset.coachMode === coachMode));
+    $('#message-feed').classList.toggle('is-hidden', coachMode !== 'chat');
+    $('#composer').classList.toggle('is-hidden', coachMode !== 'chat');
+    $('#practice-panel').classList.toggle('is-hidden', coachMode !== 'practice');
+    $('#new-practice').classList.toggle('is-hidden', coachMode !== 'practice');
+    $('#chat-title').textContent = coachMode === 'practice' ? 'Практика формулировки' : activeChatTitle();
+  }
+
+  function activeChatTitle() {
+    return $('.session-item.is-active strong')?.textContent || 'Тренер вопросов';
+  }
+
+  async function startPractice() {
+    const buttons = [$('#start-practice'), $('#new-practice')];
+    buttons.forEach(button => { button.disabled = true; });
+    $('#new-practice').textContent = 'Генерируем…';
+    try {
+      const scenario = await api('/practice/scenario', {
+        method: 'POST', body: JSON.stringify({ model: selectedModel })
+      });
+      practiceState = { scenario, attempt: 1, previousFeedback: '', passed: false };
+      $('#practice-empty').classList.add('is-hidden');
+      $('#practice-workspace').classList.remove('is-hidden');
+      $('#practice-domain').textContent = scenario.domain || 'СИТУАЦИЯ';
+      $('#practice-situation').textContent = scenario.situation;
+      $('#practice-question').value = '';
+      $('#practice-idea').value = '';
+      $('#practice-attempt').textContent = 'Попытка 1';
+      $('#practice-feedback').classList.add('is-hidden');
+      $('#practice-feedback').innerHTML = '';
+      $('#submit-practice').disabled = false;
+      $('#submit-practice').innerHTML = 'Проверить <span>→</span>';
+      updatePracticeProgress(1);
+      $('#practice-question').focus();
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      buttons.forEach(button => { button.disabled = false; });
+      $('#new-practice').textContent = 'Новая ситуация';
+    }
+  }
+
+  async function submitPractice(event) {
+    event.preventDefault();
+    if (!practiceState.scenario || practiceState.passed) return;
+    const question = $('#practice-question').value.trim();
+    const idea = $('#practice-idea').value.trim();
+    if (!question || !idea) return;
+    const button = $('#submit-practice');
+    button.disabled = true;
+    button.innerHTML = 'Проверяем…';
+    updatePracticeProgress(3);
+    try {
+      const review = await api('/practice/review', {
+        method: 'POST',
+        body: JSON.stringify({
+          situation: practiceState.scenario.situation,
+          question,
+          idea,
+          previousFeedback: practiceState.previousFeedback,
+          attempt: practiceState.attempt,
+          model: selectedModel
+        })
+      });
+      renderPracticeFeedback(review);
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      if (!practiceState.passed) {
+        button.disabled = false;
+        button.innerHTML = 'Проверить <span>→</span>';
+      }
+    }
+  }
+
+  function renderPracticeFeedback(review) {
+    const passed = review.verdict === 'PASSED';
+    const feedback = $('#practice-feedback');
+    feedback.classList.remove('is-hidden', 'passed');
+    feedback.classList.toggle('passed', passed);
+    feedback.innerHTML = `
+      <div class="feedback-verdict">${passed ? 'Зачёт' : 'Нужно улучшить'} · ${escapeHtml(review.category || 'разбор')}</div>
+      <div class="feedback-score">${Math.max(1, Math.min(5, Number(review.score) || 1))}<small>/ 5</small></div>
+      <h3>${passed ? 'Рамка взломана.' : 'Одна правка на следующий ход.'}</h3>
+      <p>${escapeHtml(review.feedback || '')}</p>
+      <div class="feedback-next"><strong>${passed ? 'Как проверить' : 'Следующий шаг'}</strong><span>${escapeHtml(review.nextStep || '')}</span></div>
+      ${passed ? '<button class="primary-button" id="practice-next" type="button">Следующая ситуация <span>→</span></button>' : ''}`;
+    practiceState.previousFeedback = `${review.feedback || ''} ${review.nextStep || ''}`.trim();
+    practiceState.passed = passed;
+    updatePracticeProgress(passed ? 5 : 4);
+    if (passed) {
+      $('#submit-practice').disabled = true;
+      $('#practice-next').addEventListener('click', startPractice);
+    } else {
+      practiceState.attempt += 1;
+      $('#practice-attempt').textContent = `Попытка ${practiceState.attempt}`;
+      $('#practice-question').focus();
+    }
+    feedback.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function updatePracticeProgress(stage) {
+    $$('.practice-progress span').forEach((item, index) => item.classList.toggle('is-active', index < stage));
   }
 
   function bindSuggestions() {
@@ -455,7 +586,7 @@
     button.disabled = true;
     button.textContent = 'Генерируем…';
     try {
-      const rows = await api('/scenarios/generate', { method: 'POST', body: JSON.stringify({ count: 7 }) });
+      const rows = await api('/scenarios/generate', { method: 'POST', body: JSON.stringify({ count: 7, model: selectedModel }) });
       generatedScenarios.push(...rows.map(normalizeGeneratedScenario));
       updateScoreboard();
       showToast(`Добавлено ситуаций: ${rows.length}`);
@@ -568,6 +699,7 @@
     bindNavigation();
     bindTrainer();
     updateScoreboard();
+    loadSystemStatus();
     setRoute(location.hash.slice(1) || 'theory', false);
     if ('serviceWorker' in navigator && location.protocol !== 'file:') {
       navigator.serviceWorker.register('sw.js').catch(() => {});

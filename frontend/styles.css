@@ -30,6 +30,7 @@ body {
 button, textarea { font: inherit; }
 button { color: inherit; }
 button:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px solid var(--violet); outline-offset: 3px; }
+.is-hidden { display: none !important; }
 .noise {
   position: fixed; inset: 0; pointer-events: none; z-index: 100;
   opacity: .035; mix-blend-mode: multiply;
@@ -157,6 +158,11 @@ button:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px sol
 .progress-track { height: 4px; margin-top: 48px; background: rgba(255,255,255,.13); }
 .progress-track span { display: block; width: 0; height: 100%; background: var(--acid); transition: width .35s ease; }
 .trainer-meta { display: flex; justify-content: space-between; align-items: center; margin: 12px 0 32px; color: #8d8f87; font: 11px var(--mono); text-transform: uppercase; letter-spacing: .09em; }
+.trainer-actions { display: flex; align-items: center; gap: 18px; }
+.trainer-actions .secondary-button { color: var(--paper); border-color: var(--white-line); font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .09em; }
+.trainer-actions .secondary-button:hover { color: var(--ink); }
+.trainer-model-picker { color: #8d8f87; }
+.trainer-model-picker select { color: var(--paper); border-color: var(--white-line); }
 .training-stage { display: grid; place-items: center; perspective: 1600px; }
 .flip-card { width: min(920px, 100%); min-height: 610px; perspective: 1600px; }
 .flip-inner { position: relative; width: 100%; min-height: 610px; transition: transform .78s cubic-bezier(.2,.8,.2,1); transform-style: preserve-3d; }
@@ -204,6 +210,10 @@ button:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px sol
 .chat-main { min-width: 0; display: grid; grid-template-rows: auto 1fr auto; height: calc(100vh - 78px); }
 .chat-header { min-height: 90px; display: flex; justify-content: space-between; align-items: center; padding: 18px 34px; border-bottom: 1px solid var(--line); background: rgba(233,231,221,.92); backdrop-filter: blur(14px); }
 .chat-header h1 { margin: 5px 0 0; font-size: 26px; letter-spacing: -.03em; }
+.chat-title-block { display: flex; align-items: center; gap: 20px; }
+.coach-mode-switch { display: flex; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.35); }
+.coach-mode-switch button { padding: 7px 11px; border: 0; border-radius: 999px; background: transparent; cursor: pointer; font-size: 11px; font-weight: 750; }
+.coach-mode-switch button.is-active { background: var(--ink); color: var(--acid); }
 .chat-actions { display: flex; align-items: center; gap: 10px; }
 .model-picker { display: flex; align-items: center; gap: 8px; color: var(--muted); font: 9px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
 .model-picker select { max-width: 190px; padding: 10px 30px 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #f8f7f1; color: var(--ink); font: 11px var(--mono); }
@@ -236,6 +246,34 @@ button:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px sol
 kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; font: 9px var(--mono); }
 .send-button { width: 42px; height: 42px; border-radius: 50%; background: var(--ink); color: var(--acid); font-size: 22px; }
 .send-button:disabled { opacity: .4; cursor: wait; }
+
+/* Guided practice */
+.practice-panel { overflow-y: auto; padding: 42px max(28px, calc((100% - 940px)/2)); }
+.practice-empty { min-height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
+.practice-number { color: transparent; -webkit-text-stroke: 1px #9a9b92; font: 72px/1 var(--mono); }
+.practice-empty h2 { margin: 20px 0 12px; font-size: clamp(38px, 5vw, 64px); line-height: .98; letter-spacing: -.055em; }
+.practice-empty p { max-width: 650px; margin: 0 0 28px; color: #66675f; font-size: 17px; line-height: 1.55; }
+.practice-workspace { padding-bottom: 50px; }
+.practice-progress { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; margin-bottom: 36px; }
+.practice-progress span { padding-top: 9px; border-top: 3px solid #c8c7bd; color: #92938b; font: 9px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+.practice-progress span.is-active { border-color: var(--violet); color: var(--ink); }
+.practice-situation { padding: 30px; border-radius: 24px; background: var(--ink); color: var(--paper); }
+.practice-situation h2 { max-width: 820px; margin: 14px 0 0; font-size: clamp(24px, 3vw, 38px); line-height: 1.25; letter-spacing: -.035em; }
+.practice-form { display: grid; gap: 18px; margin-top: 24px; }
+.practice-form label > span { display: block; margin: 0 0 8px; font: 10px var(--mono); text-transform: uppercase; letter-spacing: .1em; }
+.practice-form textarea { width: 100%; padding: 17px 18px; resize: vertical; border: 1px solid var(--line); border-radius: 16px; outline: 0; background: #f8f7f1; color: var(--ink); font-size: 16px; line-height: 1.5; }
+.practice-submit-row { display: flex; justify-content: space-between; align-items: center; }
+.practice-submit-row small { color: var(--muted); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .1em; }
+.practice-feedback { position: relative; margin-top: 26px; padding: 30px; border: 1px solid #e5b9a5; border-radius: 24px; background: #ffe1d3; overflow: hidden; }
+.practice-feedback.passed { border-color: #acd32b; background: var(--acid); }
+.feedback-verdict { display: inline-flex; padding: 7px 10px; border-radius: 999px; background: var(--ink); color: #ffb18e; font: 9px var(--mono); text-transform: uppercase; letter-spacing: .1em; }
+.practice-feedback.passed .feedback-verdict { color: var(--acid); }
+.feedback-score { position: absolute; right: 25px; top: 18px; font-size: 58px; font-weight: 850; letter-spacing: -.07em; opacity: .2; }
+.feedback-score small { font-size: 14px; }
+.practice-feedback h3 { margin: 24px 0 10px; font-size: 29px; letter-spacing: -.035em; }
+.practice-feedback > p { max-width: 760px; margin: 0; font-size: 17px; line-height: 1.55; }
+.feedback-next { display: grid; grid-template-columns: 130px 1fr; gap: 14px; margin: 22px 0; padding-top: 18px; border-top: 1px solid rgba(16,17,15,.16); line-height: 1.45; }
+.feedback-next strong { font: 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
 
 .toast { position: fixed; left: 50%; bottom: 26px; z-index: 120; transform: translate(-50%, 20px); padding: 12px 17px; background: var(--ink); color: var(--paper); border-radius: 999px; font-size: 12px; opacity: 0; pointer-events: none; transition: .25s ease; box-shadow: var(--shadow); }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
@@ -278,6 +316,8 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
   .example-row { grid-template-columns: 90px 1fr; }
   .compare-grid { grid-template-columns: 1fr; }
   .trainer-shell { padding-top: 38px; padding-bottom: 100px; }
+  .trainer-meta { align-items: flex-start; gap: 12px; }
+  .trainer-actions { flex-direction: column; align-items: flex-end; gap: 8px; }
   .scoreboard { width: 100%; }
   .scoreboard div { flex: 1; min-width: 0; padding: 13px; }
   .flip-card, .flip-inner, .card-face { min-height: 680px; }
@@ -290,11 +330,18 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
   .chat-main { height: calc(100vh - 66px); }
   .chat-header { min-height: 74px; padding: 13px 17px; }
   .chat-header h1 { font-size: 20px; }
+  .chat-title-block { gap: 8px; }
+  .chat-title-block h1 { display: none; }
+  .coach-mode-switch button { padding: 7px 9px; font-size: 10px; }
   .chat-actions { gap: 6px; }
   .model-picker span { display: none; }
   .model-picker select { max-width: 135px; padding: 9px 7px; font-size: 9px; }
   .secondary-button { padding: 9px 11px; font-size: 11px; }
   .message-feed { padding: 28px 17px 110px; }
+  .practice-panel { height: calc(100vh - 140px); padding: 24px 17px 110px; }
+  .practice-progress span { font-size: 7px; overflow: hidden; }
+  .practice-situation { padding: 22px; border-radius: 18px; }
+  .feedback-next { grid-template-columns: 1fr; gap: 7px; }
   .welcome-panel { justify-content: flex-start; padding-top: 20px; }
   .suggestion-grid { grid-template-columns: 1fr; }
   .message { grid-template-columns: 1fr; gap: 8px; }

@@ -29,15 +29,18 @@ public class ApiController {
     private final ScenarioService scenarios;
     private final AcpGateway acp;
     private final AppProperties properties;
+    private final PracticeService practice;
 
     public ApiController(DatabaseStore store, ChatService chat, RunStreamRegistry streams,
-                         ScenarioService scenarios, AcpGateway acp, AppProperties properties) {
+                         ScenarioService scenarios, AcpGateway acp, AppProperties properties,
+                         PracticeService practice) {
         this.store = store;
         this.chat = chat;
         this.streams = streams;
         this.scenarios = scenarios;
         this.acp = acp;
         this.properties = properties;
+        this.practice = practice;
     }
 
     @GetMapping("/system/status")
@@ -84,7 +87,18 @@ public class ApiController {
 
     @PostMapping("/scenarios/generate")
     public List<DatabaseStore.ScenarioRow> generate(@Valid @RequestBody GenerateScenariosRequest request) {
-        return scenarios.generate(request.count());
+        return scenarios.generate(request.count(), request.model());
+    }
+
+    @PostMapping("/practice/scenario")
+    public PracticeService.PracticeScenario practiceScenario(@Valid @RequestBody ModelRequest request) {
+        return practice.newScenario(request.model());
+    }
+
+    @PostMapping("/practice/review")
+    public PracticeService.PracticeReview practiceReview(@Valid @RequestBody PracticeReviewRequest request) {
+        return practice.review(request.situation(), request.question(), request.idea(),
+                request.previousFeedback(), request.attempt(), request.model());
     }
 
     public record CreateSessionRequest(@Size(max = 180) String title) {
@@ -94,7 +108,20 @@ public class ApiController {
                                      @Size(max = 120) String model) {
     }
 
-    public record GenerateScenariosRequest(@Min(1) @Max(20) int count) {
+    public record GenerateScenariosRequest(@Min(1) @Max(20) int count,
+                                           @Size(max = 120) String model) {
+    }
+
+    public record ModelRequest(@Size(max = 120) String model) {
+    }
+
+    public record PracticeReviewRequest(
+            @NotBlank @Size(max = 1600) String situation,
+            @NotBlank @Size(max = 1800) String question,
+            @NotBlank @Size(max = 3000) String idea,
+            @Size(max = 3000) String previousFeedback,
+            @Min(1) @Max(20) int attempt,
+            @Size(max = 120) String model) {
     }
 
     public record RunResponse(UUID runId) {

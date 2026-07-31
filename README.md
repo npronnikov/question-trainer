@@ -94,6 +94,8 @@ H2 создаёт файл `backend/data/question-hacker.mv.db`. Консоль 
 - `GET /api/chat/runs/{runId}/events` — SSE
 - `GET /api/scenarios/generated`
 - `POST /api/scenarios/generate`
+- `POST /api/practice/scenario` — новая ситуация для управляемой практики
+- `POST /api/practice/review` — проверка вопроса и идеи пользователя
 
 ## Структура данных
 

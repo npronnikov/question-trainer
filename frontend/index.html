@@ -89,7 +89,14 @@
         <div class="progress-track" aria-label="Прогресс">
           <span id="progress-fill"></span>
         </div>
-        <div class="trainer-meta"><span id="card-counter">Карточка 1 из 28</span><button id="reset-progress" class="text-button danger">Сбросить прогресс</button></div>
+        <div class="trainer-meta">
+          <span id="card-counter">Карточка 1 из 28</span>
+          <div class="trainer-actions">
+            <label class="model-picker trainer-model-picker" for="trainer-model-select"><span>Модель</span><select id="trainer-model-select" aria-label="Модель генератора ситуаций" disabled><option>—</option></select></label>
+            <button class="secondary-button" id="generate-scenarios">+ 7 ситуаций</button>
+            <button id="reset-progress" class="text-button danger">Сбросить прогресс</button>
+          </div>
+        </div>
 
         <div class="training-stage">
           <div class="flip-card" id="flip-card">
@@ -138,10 +145,16 @@
 
         <section class="chat-main">
           <header class="chat-header">
-            <div><span class="eyebrow">ЛОНГРИД-ЧАТ</span><h1 id="chat-title">Тренер вопросов</h1></div>
+            <div class="chat-title-block">
+              <div class="coach-mode-switch" role="group" aria-label="Режим обучения">
+                <button class="is-active" type="button" data-coach-mode="chat">Диалог</button>
+                <button type="button" data-coach-mode="practice">Практика</button>
+              </div>
+              <h1 id="chat-title">Тренер вопросов</h1>
+            </div>
             <div class="chat-actions">
               <label class="model-picker" for="model-select"><span>Модель</span><select id="model-select" aria-label="Модель коуча" disabled><option>—</option></select></label>
-              <button class="secondary-button" id="generate-scenarios">+ 7 ситуаций</button>
+              <button class="secondary-button is-hidden" id="new-practice" type="button">Новая ситуация</button>
             </div>
           </header>
 
@@ -156,6 +169,33 @@
                 <button data-prompt="Продукт перегружен функциями. Как с помощью упрощения и первых принципов найти ядро ценности?">Упростить продукт</button>
                 <button data-prompt="Нужна прорывная идея для корпоративного обучения. Используй кросс-дисциплину и гиперболу.">Найти прорывную идею</button>
               </div>
+            </article>
+          </div>
+
+          <div class="practice-panel is-hidden" id="practice-panel" aria-live="polite">
+            <div class="practice-empty" id="practice-empty">
+              <span class="practice-number">01</span>
+              <h2>Сформулируйте вопрос.<br>Получите из него идею.</h2>
+              <p>Коуч даст одну точную правку. Улучшайте попытку, пока упражнение не будет зачтено.</p>
+              <button class="primary-button" id="start-practice" type="button">Получить ситуацию <span>→</span></button>
+            </div>
+            <article class="practice-workspace is-hidden" id="practice-workspace">
+              <div class="practice-progress" aria-label="Этапы практики">
+                <span class="is-active">Ситуация</span><span>Вопрос</span><span>Идея</span><span>Улучшение</span><span>Зачёт</span>
+              </div>
+              <div class="practice-situation">
+                <span class="eyebrow" id="practice-domain">СИТУАЦИЯ</span>
+                <h2 id="practice-situation"></h2>
+              </div>
+              <form class="practice-form" id="practice-form">
+                <label><span>Ваш вопрос-взломщик</span><textarea id="practice-question" rows="3" maxlength="1800" required placeholder="Какой вопрос изменит исходную рамку?"></textarea></label>
+                <label><span>Идея из этого вопроса</span><textarea id="practice-idea" rows="4" maxlength="3000" required placeholder="Какая конкретная идея возникла благодаря вопросу?"></textarea></label>
+                <div class="practice-submit-row">
+                  <small id="practice-attempt">Попытка 1</small>
+                  <button class="primary-button" id="submit-practice" type="submit">Проверить <span>→</span></button>
+                </div>
+              </form>
+              <article class="practice-feedback is-hidden" id="practice-feedback"></article>
             </article>
           </div>
 

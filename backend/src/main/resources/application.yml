@@ -31,8 +31,8 @@ app:
     timeout: ${ACP_TIMEOUT:180s}
     max-file-bytes: 524288
     forward-env: CODEX_API_KEY,OPENAI_API_KEY,ANTHROPIC_API_KEY,GEMINI_API_KEY,CODEX_PATH,CODEX_CONFIG,MODEL_PROVIDER
-    models: ${ACP_MODELS:gpt-5.6-terra,gpt-5.6-sol}
-    default-model: ${ACP_DEFAULT_MODEL:gpt-5.6-terra}
+    models: ${ACP_MODELS:gpt-5.6-terra[high],gpt-5.6-sol[xhigh]}
+    default-model: ${ACP_DEFAULT_MODEL:gpt-5.6-terra[high]}
   chat:
     max-message-chars: 12000
     history-limit: 24

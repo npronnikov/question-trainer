@@ -8,7 +8,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ScenarioService {
@@ -33,12 +35,12 @@ public class ScenarioService {
         this.mapper = mapper;
     }
 
-    public List<DatabaseStore.ScenarioRow> generate(int requestedCount) {
+    public List<DatabaseStore.ScenarioRow> generate(int requestedCount, String requestedModel) {
         int count = Math.max(1, Math.min(20, requestedCount));
         try {
             String raw = acp.ask(prompts.scenarioGenerator()
                     + "\n\nКоличество элементов: " + count + ".",
-                    properties.acp().defaultModel(), ignored -> { });
+                    validateModel(requestedModel), ignored -> { });
             List<GeneratedInput> inputs = mapper.readValue(extractArray(raw), new TypeReference<>() { });
             var saved = new ArrayList<DatabaseStore.ScenarioRow>();
             for (GeneratedInput input : inputs.stream().limit(count).toList()) {
@@ -47,28 +49,23 @@ public class ScenarioService {
             }
             if (saved.isEmpty()) throw new IllegalArgumentException("Агент вернул пустой массив");
             return saved;
+        } catch (ResponseStatusException error) {
+            throw error;
         } catch (Exception error) {
             log.warn("Scenario generation through ACP failed", error);
-            if (!properties.acp().fallbackEnabled()) throw new IllegalStateException("Не удалось сгенерировать ситуации", error);
-            return fallback(count);
+            throw new IllegalStateException("Не удалось сгенерировать ситуации через ACP", error);
         }
     }
 
-    private List<DatabaseStore.ScenarioRow> fallback(int count) {
-        List<GeneratedInput> samples = List.of(
-                new GeneratedInput("Команда хочет повысить качество релизов. Фасилитатор спрашивает: «Что нужно делать, чтобы каждый релиз гарантированно ломал доверие пользователей?»", "INVERSION", "Цель намеренно перевёрнута в провал, чтобы затем обратить причины в меры защиты."),
-                new GeneratedInput("Сервис обрабатывает 200 заявок в день. Вопрос: «Какой должна стать система, если завтра придёт 20 000 заявок, а штат останется прежним?»", "HYPERBOLE", "Параметр спроса увеличен в 100 раз, поэтому косметические улучшения уже не подходят."),
-                new GeneratedInput("В библиотеке длинные очереди на выдачу книг. Команда спрашивает: «Как с потоком справляется сортировочный центр посылок и какой принцип маршрутизации мы можем перенести?»", "CROSS_DISCIPLINE", "Ищется перенос механизма решения из другой отрасли, а не копирование внешнего вида."),
-                new GeneratedInput("Представьте 2031 год: обучение сотрудников занимает один день и даёт устойчивый навык. Какие три решения, принятые раньше, привели к этому?", "FUTURISM", "Сначала задано успешное будущее, затем путь восстанавливается назад методом backcasting."),
-                new GeneratedInput("В отрасли принято продавать только годовые лицензии. Вопрос: «Что откроется, если мы вообще перестанем продавать лицензии?»", "PROVOCATION", "Под сомнение поставлена негласная и привычная основа бизнес-модели."),
-                new GeneratedInput("Пользователи редко нажимают кнопку «Экспорт». Вместо вопроса про цвет кнопки команда спрашивает: «Какой результат человек пытается получить после экспорта?»", "REFRAMING", "Фокус перенесён с элемента интерфейса на реальную задачу пользователя."),
-                new GeneratedInput("В форме регистрации 14 полей. Вопрос: «Если оставить одно действие и три обязательных данных, без чего ценность действительно разрушится?»", "SIMPLIFICATION", "Удаляются исторические детали, чтобы выделить минимально необходимое ядро."));
-        var result = new ArrayList<DatabaseStore.ScenarioRow>();
-        for (int i = 0; i < count; i++) {
-            GeneratedInput sample = samples.get(i % samples.size());
-            result.add(store.addScenario(sample.situation(), sample.category(), sample.explanation()));
+    private String validateModel(String requested) {
+        String model = requested == null || requested.isBlank()
+                ? properties.acp().defaultModel()
+                : requested.strip();
+        if (model == null || model.isBlank()) return null;
+        if (!properties.acp().models().contains(model)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестная модель: " + model);
         }
-        return result;
+        return model;
     }
 
     private void validate(GeneratedInput input) {
