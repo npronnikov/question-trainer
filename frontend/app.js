@@ -14,6 +14,8 @@
   let trainerOptions = [];
   let trainerAnswered = false;
   let generatedScenarios = [];
+  let theoryExpansion = null;
+  let theoryExpansionPromise = null;
   let chatInitialized = false;
   let currentSessionId = null;
   let sending = false;
@@ -106,7 +108,102 @@
         ${category.examples.map(([label, question]) => `<div class="example-row"><span>${escapeHtml(label)}</span><strong>«${escapeHtml(question)}»</strong></div>`).join('')}
       </div>
       <div class="warning-box"><b>!</b><p><strong>Анти-паттерн.</strong> ${escapeHtml(category.mistake)}</p></div>
-      <div class="cue-line">${escapeHtml(category.cue)}</div>`;
+      <div class="cue-line">${escapeHtml(category.cue)}</div>
+      <div class="expansion-entry">
+        <button class="secondary-button" id="open-expansion" type="button">Исследование, кейсы и источники ↓</button>
+        <span>3 доказательных кейса · проверяемые источники</span>
+      </div>
+      <section class="theory-expansion is-hidden" id="theory-expansion"></section>`;
+    $('#open-expansion')?.addEventListener('click', () => showTheoryExpansion(category.id));
+  }
+
+  async function loadTheoryExpansion() {
+    if (theoryExpansion) return theoryExpansion;
+    if (!theoryExpansionPromise) {
+      theoryExpansionPromise = fetch('data/theory-expansion.json')
+        .then(response => {
+          if (!response.ok) throw new Error(`Не удалось загрузить исследование: ${response.status}`);
+          return response.json();
+        })
+        .then(data => {
+          theoryExpansion = data;
+          return data;
+        });
+    }
+    return theoryExpansionPromise;
+  }
+
+  async function showTheoryExpansion(categoryId) {
+    const panel = $('#theory-expansion');
+    const button = $('#open-expansion');
+    if (!panel || !button) return;
+    if (!panel.classList.contains('is-hidden')) {
+      panel.classList.add('is-hidden');
+      button.textContent = 'Исследование, кейсы и источники ↓';
+      return;
+    }
+
+    panel.classList.remove('is-hidden');
+    panel.innerHTML = '<p class="expansion-loading">Загружаем исследование…</p>';
+    button.textContent = 'Скрыть расширенную теорию ↑';
+    try {
+      const data = await loadTheoryExpansion();
+      const expanded = data.categories.find(item => item.id === categoryId);
+      if (!expanded) throw new Error('Для этой категории исследование не найдено');
+      renderTheoryExpansion(panel, expanded, data.sources || []);
+    } catch (error) {
+      panel.innerHTML = `<p class="expansion-error">${escapeHtml(error.message)}</p>`;
+    }
+  }
+
+  function renderTheoryExpansion(panel, category, sources) {
+    const sourceMap = new Map(sources.map(source => [source.id, source]));
+    const usedSourceIds = new Set();
+    category.origins.forEach(item => item.sourceIds.forEach(id => usedSourceIds.add(id)));
+    category.cases.forEach(item => item.sourceIds.forEach(id => usedSourceIds.add(id)));
+    const usedSources = [...usedSourceIds].map(id => sourceMap.get(id)).filter(Boolean);
+    const sourceLinks = ids => ids.map(id => sourceMap.get(id)).filter(Boolean).map(source =>
+      `<a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.title)}</a>`
+    ).join(' · ');
+
+    panel.innerHTML = `
+      <div class="expansion-head"><span>УГЛУБЛЁННЫЙ СЛОЙ</span><strong>${category.cases.length} кейса · ${usedSources.length} источников</strong></div>
+      <p class="expansion-overview">${escapeHtml(category.overview)}</p>
+
+      <div class="expansion-grid">
+        <section><h4>Протокол применения</h4><ol>${category.protocol.map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ol></section>
+        <section><h4>Вопросы-шаблоны</h4><ul>${category.questionTemplates.map(item => `<li><span>${escapeHtml(item.domain)}</span>${escapeHtml(item.question)}</li>`).join('')}</ul></section>
+      </div>
+
+      <h4 class="expansion-title">Люди и компании</h4>
+      <div class="case-list">
+        ${category.cases.map((item, index) => `
+          <details class="case-card" ${index === 0 ? 'open' : ''}>
+            <summary><span>${String(index + 1).padStart(2, '0')}</span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.actor)} · ${escapeHtml(item.period)}</small></summary>
+            <div class="case-content">
+              <dl>
+                <div><dt>Исходная рамка</dt><dd>${escapeHtml(item.originalFrame)}</dd></div>
+                <div><dt>Сдвиг рамки</dt><dd>${escapeHtml(item.frameShift)}</dd></div>
+                <div><dt>Действие</dt><dd>${escapeHtml(item.action)}</dd></div>
+                <div><dt>Результат</dt><dd>${escapeHtml(item.outcome)}</dd></div>
+                <div><dt>Почему это техника</dt><dd>${escapeHtml(item.whyItFits)}</dd></div>
+                <div><dt>Ограничения</dt><dd>${escapeHtml(item.limitations)}</dd></div>
+              </dl>
+              <p class="case-classification">${item.classification === 'explicit' ? 'Метод явно описан участником' : 'Ретроспективная интерпретация исследования'}</p>
+              <p class="case-sources">${sourceLinks(item.sourceIds)}</p>
+            </div>
+          </details>`).join('')}
+      </div>
+
+      <div class="exercise-pair">
+        <section><span>15 МИНУТ</span><h4>Быстрое упражнение</h4><p>${escapeHtml(category.quickExercise)}</p></section>
+        <section><span>24–48 ЧАСОВ</span><h4>Полевой эксперимент</h4><p>${escapeHtml(category.experiment)}</p></section>
+      </div>
+
+      <details class="source-register">
+        <summary>Источники этой главы (${usedSources.length})</summary>
+        <ol>${usedSources.map(source => `<li><a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.title)}</a><span>${escapeHtml(source.supports)}</span></li>`).join('')}</ol>
+      </details>`;
   }
 
   function allScenarios() {
