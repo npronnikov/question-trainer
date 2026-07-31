@@ -41,6 +41,12 @@ public class ChatService {
         return store.createSession(safeTitle.substring(0, Math.min(180, safeTitle.length())));
     }
 
+    public void deleteSession(UUID sessionId) {
+        if (!store.deleteSession(sessionId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Диалог не найден");
+        }
+    }
+
     public UUID send(UUID sessionId, String text, String model) {
         var session = requireSession(sessionId);
         String clean = text == null ? "" : text.strip();

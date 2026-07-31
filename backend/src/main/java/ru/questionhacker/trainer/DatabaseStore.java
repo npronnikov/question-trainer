@@ -36,6 +36,10 @@ public class DatabaseStore {
         return jdbc.query("SELECT * FROM chat_session ORDER BY updated_at DESC", this::mapSession);
     }
 
+    public boolean deleteSession(UUID id) {
+        return jdbc.update("DELETE FROM chat_session WHERE id=?", id) > 0;
+    }
+
     public void touchSession(UUID id, String title) {
         jdbc.update("UPDATE chat_session SET title=?, updated_at=? WHERE id=?",
                 title, OffsetDateTime.now(ZoneOffset.UTC), id);

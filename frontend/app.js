@@ -18,6 +18,7 @@
   let theoryExpansionPromise = null;
   let chatInitialized = false;
   let currentSessionId = null;
+  let pendingDeleteSession = null;
   let sending = false;
   let selectedModel = null;
   let coachMode = 'chat';
@@ -390,17 +391,55 @@
   function renderSessions(sessions) {
     const list = $('#session-list');
     list.innerHTML = sessions.map(session => `
-      <button class="session-item ${session.id === currentSessionId ? 'is-active' : ''}" data-session="${session.id}">
-        <strong>${escapeHtml(session.title)}</strong>
-        <small>${formatDate(session.updatedAt)}</small>
-      </button>`).join('');
+      <div class="session-row ${session.id === currentSessionId ? 'is-active' : ''}">
+        <button class="session-item" data-session="${session.id}">
+          <strong>${escapeHtml(session.title)}</strong>
+          <small>${formatDate(session.updatedAt)}</small>
+        </button>
+        <button class="session-delete" data-delete-session="${session.id}" data-session-title="${escapeHtml(session.title)}" aria-label="Удалить диалог ${escapeHtml(session.title)}" title="Удалить диалог"><span aria-hidden="true">×</span></button>
+      </div>`).join('');
     $$('.session-item', list).forEach(button => button.addEventListener('click', () => selectSession(button.dataset.session)));
+    $$('.session-delete', list).forEach(button => button.addEventListener('click', () => requestDeleteSession(button.dataset.deleteSession, button.dataset.sessionTitle)));
+  }
+
+  function requestDeleteSession(sessionId, title) {
+    if (sending) {
+      showToast('Дождитесь завершения ответа');
+      return;
+    }
+    pendingDeleteSession = { id: sessionId, title };
+    $('#delete-dialog-name').textContent = `«${title}»`;
+    $('#delete-session-dialog').showModal();
+  }
+
+  async function confirmDeleteSession() {
+    if (!pendingDeleteSession) return;
+    const session = pendingDeleteSession;
+    const confirmButton = $('#delete-session-confirm');
+    const cancelButton = $('#delete-session-cancel');
+    confirmButton.disabled = true;
+    cancelButton.disabled = true;
+    confirmButton.textContent = 'Удаляем…';
+    try {
+      await api(`/chat/sessions/${session.id}`, { method: 'DELETE' });
+      if (currentSessionId === session.id) currentSessionId = null;
+      $('#delete-session-dialog').close();
+      pendingDeleteSession = null;
+      await loadSessions(currentSessionId);
+      showToast('Диалог удалён');
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      confirmButton.disabled = false;
+      cancelButton.disabled = false;
+      confirmButton.textContent = 'Удалить';
+    }
   }
 
   async function selectSession(sessionId) {
     if (!sessionId) return;
     currentSessionId = sessionId;
-    $$('.session-item').forEach(item => item.classList.toggle('is-active', item.dataset.session === sessionId));
+    $$('.session-row').forEach(item => item.classList.toggle('is-active', item.querySelector('.session-item')?.dataset.session === sessionId));
     const active = $(`.session-item[data-session="${sessionId}"]`);
     if (coachMode === 'chat') $('#chat-title').textContent = active?.querySelector('strong')?.textContent || 'Тренер вопросов';
     try {
@@ -557,6 +596,26 @@
         await loadSessions(session.id);
       } catch (error) { showToast(error.message); }
     });
+    $('#delete-session-form').addEventListener('submit', event => {
+      event.preventDefault();
+      confirmDeleteSession();
+    });
+    $('#delete-session-cancel').addEventListener('click', () => {
+      pendingDeleteSession = null;
+      $('#delete-session-dialog').close();
+    });
+    $('#delete-session-dialog').addEventListener('cancel', event => {
+      if ($('#delete-session-confirm').disabled) {
+        event.preventDefault();
+        return;
+      }
+      pendingDeleteSession = null;
+    });
+    $('#delete-session-dialog').addEventListener('click', event => {
+      if (event.target !== event.currentTarget || $('#delete-session-confirm').disabled) return;
+      pendingDeleteSession = null;
+      event.currentTarget.close();
+    });
     $$('[data-coach-mode]').forEach(button => button.addEventListener('click', () => setCoachMode(button.dataset.coachMode)));
     $('#start-practice').addEventListener('click', startPractice);
     $('#new-practice').addEventListener('click', startPractice);
@@ -578,7 +637,7 @@
   }
 
   function activeChatTitle() {
-    return $('.session-item.is-active strong')?.textContent || 'Тренер вопросов';
+    return $('.session-row.is-active .session-item strong')?.textContent || 'Тренер вопросов';
   }
 
   async function startPractice() {

@@ -239,11 +239,15 @@ button:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px sol
 .icon-button { width: 40px; height: 40px; border-radius: 50%; background: var(--acid); color: var(--ink); font-size: 24px; }
 .icon-button:hover { transform: rotate(8deg); }
 .session-list { display: flex; flex-direction: column; gap: 6px; overflow: auto; }
-.session-item { width: 100%; padding: 13px 14px; border: 0; background: transparent; color: #b8bab1; border-radius: 12px; text-align: left; cursor: pointer; }
-.session-item:hover { background: rgba(255,255,255,.06); color: white; }
-.session-item.is-active { background: var(--acid); color: var(--ink); }
+.session-row { display: grid; grid-template-columns: minmax(0, 1fr) 34px; align-items: center; border-radius: 12px; color: #b8bab1; }
+.session-row:hover { background: rgba(255,255,255,.06); color: white; }
+.session-row.is-active { background: var(--acid); color: var(--ink); }
+.session-item { min-width: 0; width: 100%; padding: 13px 8px 13px 14px; border: 0; background: transparent; color: inherit; border-radius: 12px 0 0 12px; text-align: left; cursor: pointer; }
 .session-item strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
 .session-item small { display: block; margin-top: 5px; opacity: .65; font: 9px var(--mono); }
+.session-delete { width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; font-size: 20px; line-height: 1; opacity: .55; }
+.session-delete:hover, .session-delete:focus-visible { background: rgba(255,90,60,.18); color: #ff795d; opacity: 1; }
+.session-row.is-active .session-delete:hover, .session-row.is-active .session-delete:focus-visible { background: rgba(16,17,15,.13); color: #9d2514; }
 .agent-card { margin-top: auto; padding: 17px; border: 1px solid var(--white-line); border-radius: 17px; background: rgba(255,255,255,.035); }
 .agent-card-head { display: flex; align-items: center; gap: 9px; font-size: 13px; }
 .agent-card p { color: #999b93; font-size: 11px; line-height: 1.4; }
@@ -318,6 +322,17 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
 
 .toast { position: fixed; left: 50%; bottom: 26px; z-index: 120; transform: translate(-50%, 20px); padding: 12px 17px; background: var(--ink); color: var(--paper); border-radius: 999px; font-size: 12px; opacity: 0; pointer-events: none; transition: .25s ease; box-shadow: var(--shadow); }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+.confirm-dialog { width: min(520px, calc(100% - 32px)); padding: 0; border: 0; border-radius: 28px; background: var(--paper); color: var(--ink); box-shadow: 0 34px 100px rgba(0,0,0,.38); }
+.confirm-dialog::backdrop { background: rgba(16,17,15,.72); backdrop-filter: blur(7px); }
+.confirm-dialog form { position: relative; padding: 36px; overflow: hidden; }
+.confirm-dialog-mark { position: absolute; top: -42px; right: -10px; color: rgba(210,55,28,.1); font-size: 180px; font-weight: 900; line-height: 1; pointer-events: none; }
+.confirm-dialog h2 { position: relative; margin: 12px 0 14px; max-width: 390px; font-size: clamp(36px, 7vw, 54px); line-height: .95; letter-spacing: -.055em; }
+.confirm-dialog p { position: relative; max-width: 420px; color: #65665f; line-height: 1.55; }
+.confirm-dialog p strong { color: var(--ink); overflow-wrap: anywhere; }
+.confirm-dialog-actions { position: relative; display: flex; justify-content: flex-end; gap: 10px; margin-top: 30px; }
+.danger-button { padding: 13px 19px; border: 0; border-radius: 999px; background: #d2371c; color: white; cursor: pointer; font-weight: 800; }
+.danger-button:hover { background: #b72913; transform: translateY(-1px); }
+.danger-button:disabled { cursor: wait; opacity: .6; transform: none; }
 
 @media (max-width: 980px) {
   .topbar { grid-template-columns: 1fr auto; }
@@ -384,6 +399,9 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
   .model-picker select { max-width: 135px; padding: 9px 7px; font-size: 9px; }
   .secondary-button { padding: 9px 11px; font-size: 11px; }
   .message-feed { padding: 28px 17px 110px; }
+  .confirm-dialog form { padding: 28px 22px 22px; }
+  .confirm-dialog-actions { flex-direction: column-reverse; }
+  .confirm-dialog-actions button { width: 100%; }
   .practice-panel { height: calc(100vh - 140px); padding: 24px 17px 110px; }
   .practice-progress span { font-size: 7px; overflow: hidden; }
   .practice-situation { padding: 22px; border-radius: 18px; }

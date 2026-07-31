@@ -211,6 +211,19 @@
     </section>
   </main>
 
+  <dialog class="confirm-dialog" id="delete-session-dialog" aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description">
+    <form method="dialog" id="delete-session-form">
+      <span class="confirm-dialog-mark" aria-hidden="true">×</span>
+      <p class="eyebrow">УДАЛЕНИЕ ДИАЛОГА</p>
+      <h2 id="delete-dialog-title">Удалить диалог?</h2>
+      <p id="delete-dialog-description">Диалог <strong id="delete-dialog-name"></strong> и все его сообщения будут удалены без возможности восстановления.</p>
+      <div class="confirm-dialog-actions">
+        <button class="secondary-button" id="delete-session-cancel" type="button">Отмена</button>
+        <button class="danger-button" id="delete-session-confirm" type="submit">Удалить</button>
+      </div>
+    </form>
+  </dialog>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="data/theory.js"></script>

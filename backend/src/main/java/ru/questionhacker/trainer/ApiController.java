@@ -9,13 +9,16 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
@@ -63,6 +66,12 @@ public class ApiController {
     @PostMapping("/chat/sessions")
     public DatabaseStore.SessionRow createSession(@RequestBody(required = false) CreateSessionRequest request) {
         return chat.createSession(request == null ? null : request.title());
+    }
+
+    @DeleteMapping("/chat/sessions/{sessionId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteSession(@PathVariable UUID sessionId) {
+        chat.deleteSession(sessionId);
     }
 
     @GetMapping("/chat/sessions/{sessionId}/messages")

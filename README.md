@@ -89,6 +89,7 @@ H2 создаёт файл `backend/data/question-hacker.mv.db`. Консоль 
 - `GET /api/system/status`
 - `GET /api/chat/sessions`
 - `POST /api/chat/sessions`
+- `DELETE /api/chat/sessions/{id}`
 - `GET /api/chat/sessions/{id}/messages`
 - `POST /api/chat/sessions/{id}/messages`
 - `GET /api/chat/runs/{runId}/events` — SSE
