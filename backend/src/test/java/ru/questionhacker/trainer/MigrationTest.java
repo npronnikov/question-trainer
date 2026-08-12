@@ -53,4 +53,20 @@ class MigrationTest {
 
         assertThat(count).isEqualTo(10);
     }
+
+    @Test
+    void flywayCreatesVersionedPracticeAssessmentTables() {
+        Integer count = jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE UPPER(TABLE_NAME) IN (
+                  'PROMPT_VERSION',
+                  'PRACTICE_ASSIGNMENT',
+                  'PRACTICE_ATTEMPT',
+                  'PRACTICE_ASSESSMENT'
+                )
+                """, Integer.class);
+
+        assertThat(count).isEqualTo(4);
+    }
 }
