@@ -143,7 +143,10 @@
               <button class="secondary-button" id="new-session" type="button">＋ Новый диалог</button>
               <div class="session-list" id="session-list"></div>
             </div>
-            <div class="agent-card"><div class="agent-card-head"><span class="connection-dot" id="agent-dot"></span><strong>ACP agent</strong></div><p id="agent-status">Проверяем backend…</p><code id="agent-command">—</code></div>
+            <button class="agent-card" id="agent-status-card" type="button" aria-haspopup="dialog" aria-controls="acp-status-dialog">
+              <span class="agent-card-head"><span class="connection-dot" id="agent-dot"></span><strong>ACP agent</strong><span aria-hidden="true">↗</span></span>
+              <span id="agent-status">Проверяем backend…</span><code id="agent-command">—</code>
+            </button>
           </aside>
           <section class="chat-main">
             <header class="chat-header">
@@ -189,6 +192,17 @@
     </main>
 
     <dialog class="confirm-dialog" id="delete-session-dialog"><form method="dialog" id="delete-session-form"><p class="eyebrow">УДАЛЕНИЕ ДИАЛОГА</p><h2>Удалить диалог?</h2><p>Диалог <strong id="delete-dialog-name"></strong> будет удалён.</p><div class="confirm-dialog-actions"><button class="secondary-button" id="delete-session-cancel" type="button">Отмена</button><button class="danger-button" id="delete-session-confirm" type="submit">Удалить</button></div></form></dialog>
+    <dialog class="confirm-dialog acp-status-dialog" id="acp-status-dialog" aria-labelledby="acp-dialog-title" aria-describedby="acp-dialog-reason">
+      <form method="dialog">
+        <span class="confirm-dialog-mark" aria-hidden="true">?</span>
+        <p class="eyebrow">СОСТОЯНИЕ ACP</p>
+        <h2 id="acp-dialog-title">ACP agent</h2>
+        <p><strong id="acp-dialog-state">Проверяем состояние…</strong></p>
+        <p id="acp-dialog-reason">Диагностика ещё не загружена.</p>
+        <code id="acp-dialog-command">—</code>
+        <div class="confirm-dialog-actions"><button class="secondary-button" type="submit">Закрыть</button></div>
+      </form>
+    </dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
   </div>
 

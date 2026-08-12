@@ -66,3 +66,14 @@ test('theory omits the server-program footer and evidence uses two content colum
   assert.match(app, /class="evidence-meta"[\s\S]*section\.source[\s\S]*<\/div><p>/);
   assert.match(css, /\.evidence-card\s*\{[^}]*grid-template-columns:\s*minmax\(180px,\s*\.7fr\)\s+1\.5fr;/);
 });
+
+test('lower ACP card opens an accessible diagnostic dialog', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(html, /<button[^>]*id="agent-status-card"[^>]*aria-haspopup="dialog"/);
+  assert.match(html, /<dialog[^>]*id="acp-status-dialog"[^>]*aria-labelledby="acp-dialog-title"/);
+  assert.match(html, /id="acp-dialog-reason"/);
+  assert.match(app, /status\.acpAvailable/);
+  assert.match(app, /#agent-status-card[\s\S]*showModal/);
+});

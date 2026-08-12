@@ -303,9 +303,11 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visib
 .session-delete { width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; font-size: 20px; line-height: 1; opacity: .55; }
 .session-delete:hover, .session-delete:focus-visible { background: rgba(255,90,60,.18); color: #ff795d; opacity: 1; }
 .session-row.is-active .session-delete:hover, .session-row.is-active .session-delete:focus-visible { background: rgba(16,17,15,.13); color: #9d2514; }
-.agent-card { margin-top: auto; padding: 17px; border: 1px solid var(--white-line); border-radius: 17px; background: rgba(255,255,255,.035); }
+.agent-card { width: 100%; margin-top: auto; padding: 17px; border: 1px solid var(--white-line); border-radius: 17px; background: rgba(255,255,255,.035); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.agent-card:hover, .agent-card:focus-visible { border-color: rgba(204,255,41,.65); background: rgba(255,255,255,.07); }
 .agent-card-head { display: flex; align-items: center; gap: 9px; font-size: 13px; }
-.agent-card p { color: #999b93; font-size: 11px; line-height: 1.4; }
+.agent-card-head strong + span { margin-left: auto; color: var(--acid); }
+.agent-card > #agent-status { display: block; margin: 1em 0; color: #999b93; font-size: 11px; line-height: 1.4; }
 .agent-card code { display: block; color: var(--acid); font-size: 9px; overflow-wrap: anywhere; }
 .chat-main { min-width: 0; display: grid; grid-template-rows: auto 1fr auto; height: calc(100vh - 78px); }
 .chat-header { min-height: 90px; display: flex; justify-content: space-between; align-items: center; padding: 18px 34px; border-bottom: 1px solid var(--line); background: rgba(233,231,221,.92); backdrop-filter: blur(14px); }
@@ -433,6 +435,7 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
 .confirm-dialog p { position: relative; max-width: 420px; color: #65665f; line-height: 1.55; }
 .confirm-dialog p strong { color: var(--ink); overflow-wrap: anywhere; }
 .confirm-dialog-actions { position: relative; display: flex; justify-content: flex-end; gap: 10px; margin-top: 30px; }
+.acp-status-dialog code { position: relative; display: block; padding: 12px 14px; border-radius: 12px; background: var(--ink); color: var(--acid); overflow-wrap: anywhere; }
 .danger-button { padding: 13px 19px; border: 0; border-radius: 999px; background: #d2371c; color: white; cursor: pointer; font-weight: 800; }
 .danger-button:hover { background: #b72913; transform: translateY(-1px); }
 .danger-button:disabled { cursor: wait; opacity: .6; transform: none; }

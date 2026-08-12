@@ -35,6 +35,8 @@
   let moderationRows = [];
   let selectedCandidate = null;
   let pendingDeleteSession = null;
+  let systemStatus = null;
+  let systemStatusError = null;
 
   function escapeHtml(value = '') {
     return String(value).replace(/[&<>'"]/g, char => ({
@@ -256,7 +258,9 @@
   async function loadSystemStatus() {
     try {
       const status = await api('/system/status');
-      const online = status.acpEnabled;
+      systemStatus = status;
+      systemStatusError = null;
+      const online = status.acpAvailable;
       $('#connection-dot').classList.toggle('online', online);
       $('#connection-dot').classList.toggle('fallback', !online && status.fallbackEnabled);
       $('#connection-label').textContent = online ? 'ACP подключён' : 'серверный fallback';
@@ -270,9 +274,32 @@
       $('#model-select').value = selectedModel || '';
       $('#model-select').disabled = !models.length;
     } catch (error) {
+      systemStatus = null;
+      systemStatusError = error.message;
+      $('#connection-dot').classList.remove('online', 'fallback');
+      $('#agent-dot').classList.remove('online', 'fallback');
       $('#connection-label').textContent = 'сервер недоступен';
       $('#agent-status').textContent = error.message;
+      $('#agent-command').textContent = '—';
     }
+  }
+
+  function bindAcpStatus() {
+    $('#agent-status-card')?.addEventListener('click', openAcpStatusDialog);
+  }
+
+  function openAcpStatusDialog() {
+    const dialog = $('#acp-status-dialog');
+    const available = systemStatus?.acpAvailable === true;
+    const fallback = !available && systemStatus?.fallbackEnabled === true;
+    $('#acp-dialog-state').textContent = available
+      ? 'ACP-сессии доступны'
+      : fallback ? 'Работает серверный fallback' : 'ACP-сессии недоступны';
+    $('#acp-dialog-reason').textContent = available
+      ? 'Последний запуск ACP завершился успешно; новых ошибок не зафиксировано.'
+      : systemStatus?.acpReason || systemStatusError || 'ACP-сессия недоступна; подробная причина не получена.';
+    $('#acp-dialog-command').textContent = systemStatus?.agentCommand || '—';
+    dialog.showModal();
   }
 
   function setCoachMode(mode) {
@@ -733,6 +760,7 @@
     bindPractice();
     bindChat();
     bindModeration();
+    bindAcpStatus();
     await Promise.allSettled([loadCurriculum(), refreshProgressView(), loadSystemStatus()]);
     setCoachMode('practice');
     setRoute(location.hash.slice(1) || 'theory', false);
