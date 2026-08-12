@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Service
 public class PracticeAssessmentService {
@@ -31,6 +32,7 @@ public class PracticeAssessmentService {
     private final ModelAssessmentParser parser;
     private final ExecutorService executor;
     private final ObjectMapper json;
+    private final PracticeEventRegistry events;
     private final Clock clock;
 
     @Autowired
@@ -38,8 +40,9 @@ public class PracticeAssessmentService {
                                      PracticeAssessmentGateway gateway,
                                      ModelAssessmentParser parser,
                                      ExecutorService executor,
-                                     ObjectMapper json) {
-        this(practice, gateway, parser, executor, json, Clock.systemUTC());
+                                     ObjectMapper json,
+                                     PracticeEventRegistry events) {
+        this(practice, gateway, parser, executor, json, events, Clock.systemUTC());
     }
 
     PracticeAssessmentService(PracticeRepository practice,
@@ -47,12 +50,14 @@ public class PracticeAssessmentService {
                               ModelAssessmentParser parser,
                               ExecutorService executor,
                               ObjectMapper json,
+                              PracticeEventRegistry events,
                               Clock clock) {
         this.practice = practice;
         this.gateway = gateway;
         this.parser = parser;
         this.executor = executor;
         this.json = json;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -77,6 +82,45 @@ public class PracticeAssessmentService {
                 .map(this::view)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Попытка не найдена"));
+    }
+
+    public AttemptView revise(UUID ownerId, UUID parentAttemptId, Revision input) {
+        var existing = practice.findAttemptByIdempotency(ownerId, normalize(input.idempotencyKey()));
+        if (existing.isPresent()) return view(existing.get());
+        var parent = practice.findAttempt(ownerId, parentAttemptId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Попытка не найдена"));
+        if (!"NEEDS_REVISION".equals(parent.status())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Исправлять можно только попытку со статусом NEEDS_REVISION");
+        }
+        Set<String> allowed = new HashSet<>(read(
+                parent.fieldsToReviseJson(), new TypeReference<List<String>>() { }));
+        String question = revised("question", input.question(), parent.question(), allowed);
+        String answer = revised("answer", input.answer(), parent.answer(), allowed);
+        String reasoning = revised("reasoning", input.reasoning(), parent.reasoning(), allowed);
+        String solution = revised("solution", input.solution(), parent.solution(), allowed);
+        List<String> changed = FIELDS.stream()
+                .filter(field -> !fieldValue(field, parent).equals(fieldValue(
+                        field, question, answer, reasoning, solution)))
+                .sorted().toList();
+        if (changed.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "В исправлении нет изменений");
+        }
+        var submission = new Submission(parent.assignmentId(), question, answer, reasoning,
+                solution, input.model() == null ? parent.requestedModel() : input.model(),
+                input.idempotencyKey());
+        validateInput(submission);
+        var assignment = practice.findAssignment(ownerId, parent.assignmentId()).orElseThrow();
+        var attempt = practice.createAttempt(
+                ownerId, assignment, parent.id(), question, answer, reasoning, solution,
+                write(changed), normalize(submission.model()), normalize(input.idempotencyKey()),
+                OffsetDateTime.now(clock));
+        executor.submit(() -> evaluate(attempt.id()));
+        return view(attempt);
+    }
+
+    public SseEmitter events(UUID ownerId, UUID attemptId) {
+        return events.subscribe(attemptId, get(ownerId, attemptId));
     }
 
     private void evaluate(UUID attemptId) {
@@ -120,7 +164,7 @@ public class PracticeAssessmentService {
                 correction.what(), correction.why(), correction.example(),
                 json.writeValueAsString(value.fieldsToRevise()), value.feedback(),
                 modelId, latency, null, OffsetDateTime.now(clock));
-        practice.saveCompletion(row, status, OffsetDateTime.now(clock));
+        publishIfSaved(row, status);
     }
 
     private void saveUnverified(PracticeRepository.AttemptRow attempt, Exception error, long latency) {
@@ -137,7 +181,13 @@ public class PracticeAssessmentService {
                 "Отправьте ту же попытку на повторную проверку позднее.",
                 "[]", "Техническая семантическая оценка недоступна; сервер не присваивал баллы и не ставил зачёт.",
                 null, latency, reason, OffsetDateTime.now(clock));
-        practice.saveCompletion(row, "UNVERIFIED", OffsetDateTime.now(clock));
+        publishIfSaved(row, "UNVERIFIED");
+    }
+
+    private void publishIfSaved(PracticeRepository.AssessmentRow row, String status) {
+        if (practice.saveCompletion(row, status, OffsetDateTime.now(clock))) {
+            practice.findAttemptBySystem(row.attemptId()).map(this::view).ifPresent(events::publish);
+        }
     }
 
     private AttemptView view(PracticeRepository.AttemptRow row) {
@@ -177,6 +227,37 @@ public class PracticeAssessmentService {
         }
     }
 
+    private String revised(String field, String supplied, String original, Set<String> allowed) {
+        if (supplied == null) return original;
+        String value = supplied.strip();
+        if (!allowed.contains(field) && !value.equals(original)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Поле " + field + " не отмечено для исправления");
+        }
+        return value;
+    }
+
+    private String fieldValue(String field, PracticeRepository.AttemptRow row) {
+        return switch (field) {
+            case "question" -> row.question();
+            case "answer" -> row.answer();
+            case "reasoning" -> row.reasoning();
+            case "solution" -> row.solution();
+            default -> throw new IllegalArgumentException(field);
+        };
+    }
+
+    private String fieldValue(String field, String question, String answer,
+                              String reasoning, String solution) {
+        return switch (field) {
+            case "question" -> question;
+            case "answer" -> answer;
+            case "reasoning" -> reasoning;
+            case "solution" -> solution;
+            default -> throw new IllegalArgumentException(field);
+        };
+    }
+
     private long elapsedMillis(long started) {
         return Duration.ofNanos(System.nanoTime() - started).toMillis();
     }
@@ -203,6 +284,15 @@ public class PracticeAssessmentService {
 
     public record Submission(
             UUID assignmentId,
+            String question,
+            String answer,
+            String reasoning,
+            String solution,
+            String model,
+            String idempotencyKey) {
+    }
+
+    public record Revision(
             String question,
             String answer,
             String reasoning,

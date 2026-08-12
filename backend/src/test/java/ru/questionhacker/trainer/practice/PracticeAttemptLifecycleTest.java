@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -27,6 +30,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import ru.questionhacker.trainer.auth.UserAccountRepository;
 
@@ -140,6 +144,59 @@ class PracticeAttemptLifecycleTest {
                 .andExpect(status().isNotFound());
         awaitTerminal("assessment-alice", first);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM practice_attempt", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void revisionMayChangeOnlyFieldsListedByServerAndKeepsHistory() throws Exception {
+        when(gateway.assess(any(), anyString()))
+                .thenReturn(new PracticeAssessmentGateway.Result(
+                        validAssessment(1, 3, "HIGH", "PASSED"), "test-model"))
+                .thenReturn(new PracticeAssessmentGateway.Result(
+                        validAssessment(2, 3, "HIGH", null), "test-model"));
+        UUID original = submit("assessment-alice", assignment("assessment-alice"), "revision-original");
+        awaitTerminal("assessment-alice", original);
+
+        mvc.perform(post("/api/practice/attempts/{id}/revisions", original)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"answer\":\"Нельзя незаметно менять сильный шаг, который сервер не отметил для исправления.\",\"idempotencyKey\":\"bad-revision\"}"))
+                .andExpect(status().isBadRequest());
+
+        String response = mvc.perform(post("/api/practice/attempts/{id}/revisions", original)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"Какие три наблюдаемых действия гарантированно приведут запуск к провалу за неделю?\",\"idempotencyKey\":\"good-revision\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.parentAttemptId").value(original.toString()))
+                .andExpect(jsonPath("$.attemptNumber").value(2))
+                .andReturn().getResponse().getContentAsString();
+        UUID revision = UUID.fromString(json.readTree(response).path("attemptId").asText());
+        assertThat(awaitTerminal("assessment-alice", revision).path("status").asText())
+                .isEqualTo("PASSED");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM practice_attempt WHERE assignment_id=(SELECT assignment_id FROM practice_attempt WHERE id=?)",
+                Integer.class, original)).isEqualTo(2);
+    }
+
+    @Test
+    void ssePublishesSameTerminalAttemptAndIsOwnerProtected() throws Exception {
+        when(gateway.assess(any(), anyString())).thenReturn(
+                new PracticeAssessmentGateway.Result(validAssessment(2, 3, "HIGH", null), "test-model"));
+        UUID attempt = submit("assessment-alice", assignment("assessment-alice"), "sse-key");
+        awaitTerminal("assessment-alice", attempt);
+
+        MvcResult stream = mvc.perform(get("/api/practice/attempts/{id}/events", attempt)
+                        .with(user("assessment-alice")))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        mvc.perform(asyncDispatch(stream))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("PASSED")));
+
+        mvc.perform(get("/api/practice/attempts/{id}/events", attempt)
+                        .with(user("assessment-bob")))
+                .andExpect(status().isNotFound());
     }
 
     private UUID assignment(String username) throws Exception {

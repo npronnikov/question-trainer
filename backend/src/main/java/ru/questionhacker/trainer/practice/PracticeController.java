@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import ru.questionhacker.trainer.auth.AuthService;
 
@@ -61,6 +63,23 @@ public class PracticeController {
         return assessments.get(auth.requireCurrentUser().id(), attemptId);
     }
 
+    @PostMapping("/attempts/{attemptId}/revisions")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public PracticeAssessmentService.AttemptView revise(
+            @PathVariable UUID attemptId,
+            @Valid @RequestBody RevisionRequest request) {
+        return assessments.revise(auth.requireCurrentUser().id(), attemptId,
+                new PracticeAssessmentService.Revision(
+                        request.question(), request.answer(), request.reasoning(),
+                        request.solution(), request.model(), request.idempotencyKey()));
+    }
+
+    @GetMapping(value = "/attempts/{attemptId}/events",
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter events(@PathVariable UUID attemptId) {
+        return assessments.events(auth.requireCurrentUser().id(), attemptId);
+    }
+
     public record AssignmentRequest(@Size(max = 40) String targetCategory) {
     }
 
@@ -70,6 +89,15 @@ public class PracticeController {
             @NotBlank @Size(max = 3000) String answer,
             @NotBlank @Size(max = 5000) String reasoning,
             @NotBlank @Size(max = 3000) String solution,
+            @Size(max = 120) String model,
+            @Size(max = 100) String idempotencyKey) {
+    }
+
+    public record RevisionRequest(
+            @Size(max = 1800) String question,
+            @Size(max = 3000) String answer,
+            @Size(max = 5000) String reasoning,
+            @Size(max = 3000) String solution,
             @Size(max = 120) String model,
             @Size(max = 100) String idempotencyKey) {
     }
