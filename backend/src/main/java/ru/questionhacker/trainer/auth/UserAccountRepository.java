@@ -97,6 +97,11 @@ public class UserAccountRepository {
         jdbc.update("INSERT INTO user_role(user_id, role) VALUES (?,?)", userId, role);
     }
 
+    public int claimSystemOwnedChatSessions(UUID userId) {
+        return jdbc.update("UPDATE chat_session SET owner_id=? WHERE owner_id=?",
+                userId, SYSTEM_USER_ID);
+    }
+
     private AccountRow mapAccount(ResultSet rs, int ignored) throws SQLException {
         UUID id = rs.getObject("id", UUID.class);
         List<String> roles = jdbc.queryForList(

@@ -3,6 +3,10 @@ package ru.questionhacker.trainer.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.UUID;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
@@ -17,6 +21,9 @@ class AdminSeederTest {
 
     @Autowired
     private UserAccountRepository users;
+
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     private final BCryptPasswordEncoder passwords = new BCryptPasswordEncoder(4);
 
@@ -58,6 +65,23 @@ class AdminSeederTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("APP_ADMIN_USERNAME")
                 .hasMessageContaining("APP_ADMIN_PASSWORD");
+    }
+
+    @Test
+    void firstAdminClaimsLegacySystemOwnedChats() {
+        UUID sessionId = UUID.randomUUID();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        jdbc.update("""
+                INSERT INTO chat_session(id,owner_id,title,created_at,updated_at)
+                VALUES (?,?,?,?,?)
+                """, sessionId, UserAccountRepository.SYSTEM_USER_ID, "Legacy", now, now);
+
+        seeder("root", "root-password-123", null).seed();
+
+        UUID adminId = users.findPublicByLogin("root").orElseThrow().id();
+        UUID ownerId = jdbc.queryForObject(
+                "SELECT owner_id FROM chat_session WHERE id=?", UUID.class, sessionId);
+        assertThat(ownerId).isEqualTo(adminId);
     }
 
     private AdminSeeder seeder(String username, String password, String email) {

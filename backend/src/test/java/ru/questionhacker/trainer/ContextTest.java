@@ -1,34 +1,26 @@
 package ru.questionhacker.trainer;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.security.test.context.support.WithMockUser;
+
+import ru.questionhacker.trainer.auth.UserAccountRepository;
 
 @SpringBootTest(properties = {
         "app.acp.enabled=false",
         "spring.datasource.url=jdbc:h2:mem:test;DB_CLOSE_DELAY=-1"
 })
-@AutoConfigureMockMvc
 class ContextTest {
 
     @Autowired
     private DatabaseStore store;
 
-    @Autowired
-    private MockMvc mockMvc;
-
     @BeforeEach
     void cleanDatabase() {
-        store.listSessions().forEach(session -> store.deleteSession(session.id()));
+        store.listSessions(UserAccountRepository.SYSTEM_USER_ID).forEach(session ->
+                store.deleteSession(UserAccountRepository.SYSTEM_USER_ID, session.id()));
     }
 
     @Test
@@ -36,15 +28,14 @@ class ContextTest {
     }
 
     @Test
-    @WithMockUser
-    void deletingSessionAlsoDeletesItsMessages() throws Exception {
-        var session = store.createSession("Удаляемый диалог");
-        store.addMessage(session.id(), "USER", "USER", "Проверка");
+    void deletingSessionAlsoDeletesItsMessages() {
+        var ownerId = UserAccountRepository.SYSTEM_USER_ID;
+        var session = store.createSession(ownerId, "Удаляемый диалог");
+        store.addMessage(ownerId, session.id(), "USER", "USER", "Проверка");
 
-        mockMvc.perform(delete("/api/chat/sessions/{sessionId}", session.id()).with(csrf()))
-                .andExpect(status().isNoContent());
+        store.deleteSession(ownerId, session.id());
 
-        assertThat(store.findSession(session.id())).isEmpty();
-        assertThat(store.listMessages(session.id())).isEmpty();
+        assertThat(store.findSession(ownerId, session.id())).isEmpty();
+        assertThat(store.listMessages(ownerId, session.id())).isEmpty();
     }
 }

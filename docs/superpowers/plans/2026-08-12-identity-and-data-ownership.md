@@ -461,6 +461,9 @@ git commit -m "feat: seed system and first admin accounts"
 - Modify: `backend/src/main/java/ru/questionhacker/trainer/DatabaseStore.java`
 - Modify: `backend/src/main/java/ru/questionhacker/trainer/ChatService.java`
 - Modify: `backend/src/main/java/ru/questionhacker/trainer/ApiController.java`
+- Modify: `backend/src/main/java/ru/questionhacker/trainer/RunStreamRegistry.java`
+- Modify: `backend/src/main/java/ru/questionhacker/trainer/auth/AdminSeeder.java`
+- Modify: `backend/src/main/java/ru/questionhacker/trainer/auth/UserAccountRepository.java`
 - Test: `backend/src/test/java/ru/questionhacker/trainer/ChatOwnershipTest.java`
 
 - [ ] **Step 1: Write two-user isolation tests**
@@ -471,6 +474,8 @@ userCannotReadAnotherUsersMessages();
 userCannotPostToAnotherUsersSession();
 userCannotDeleteAnotherUsersSession();
 createdSessionBelongsToAuthenticatedUser();
+userCannotSubscribeToAnotherUsersRun();
+firstAdminClaimsLegacySystemOwnedChats();
 ```
 
 Assert foreign ids return 404, not 403, so the API does not reveal their existence.
@@ -522,7 +527,7 @@ Expected: PASS; cascade deletion still removes messages.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/src/main/resources/db/migration/V3__chat_ownership.sql backend/src/main/java/ru/questionhacker/trainer/auth/AdminSeeder.java backend/src/main/java/ru/questionhacker/trainer/DatabaseStore.java backend/src/main/java/ru/questionhacker/trainer/ChatService.java backend/src/main/java/ru/questionhacker/trainer/ApiController.java backend/src/test/java/ru/questionhacker/trainer/ChatOwnershipTest.java backend/src/test/java/ru/questionhacker/trainer/ContextTest.java
+git add backend/src/main/resources/db/migration/V3__chat_ownership.sql backend/src/main/java/ru/questionhacker/trainer/auth/AdminSeeder.java backend/src/main/java/ru/questionhacker/trainer/auth/UserAccountRepository.java backend/src/main/java/ru/questionhacker/trainer/DatabaseStore.java backend/src/main/java/ru/questionhacker/trainer/ChatService.java backend/src/main/java/ru/questionhacker/trainer/RunStreamRegistry.java backend/src/main/java/ru/questionhacker/trainer/ApiController.java backend/src/test/java/ru/questionhacker/trainer/ChatOwnershipTest.java backend/src/test/java/ru/questionhacker/trainer/ContextTest.java backend/src/test/java/ru/questionhacker/trainer/auth/AdminSeederTest.java
 git commit -m "feat: isolate chat data by owner"
 ```
 

@@ -10,7 +10,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Component
@@ -19,16 +21,16 @@ public class RunStreamRegistry {
     private static final long SSE_TIMEOUT = Duration.ofMinutes(8).toMillis();
     private final Map<UUID, StreamState> streams = new ConcurrentHashMap<>();
 
-    public UUID create() {
+    public UUID create(UUID ownerId) {
         var id = UUID.randomUUID();
-        streams.put(id, new StreamState());
+        streams.put(id, new StreamState(ownerId));
         return id;
     }
 
-    public SseEmitter subscribe(UUID runId) {
+    public SseEmitter subscribe(UUID ownerId, UUID runId) {
         var state = streams.get(runId);
-        if (state == null) {
-            throw new IllegalArgumentException("Неизвестный runId");
+        if (state == null || !state.ownerId.equals(ownerId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Запуск не найден");
         }
         var emitter = new SseEmitter(SSE_TIMEOUT);
         state.emitters.add(emitter);
@@ -94,10 +96,15 @@ public class RunStreamRegistry {
     }
 
     private static final class StreamState {
+        private final UUID ownerId;
         private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
         private final List<StreamEvent> backlog = new ArrayList<>();
         private boolean completed;
         private StreamEvent terminalEvent;
+
+        private StreamState(UUID ownerId) {
+            this.ownerId = ownerId;
+        }
     }
 
     private record StreamEvent(String name, Object data) {

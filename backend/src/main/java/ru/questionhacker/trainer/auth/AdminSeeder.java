@@ -53,8 +53,13 @@ public class AdminSeeder implements ApplicationRunner {
             return;
         }
 
-        users.create(username, email, passwords.encode(password), Set.of("USER", "ADMIN"), false);
+        AppUser created = users.create(
+                username, email, passwords.encode(password), Set.of("USER", "ADMIN"), false);
+        int claimedChats = users.claimSystemOwnedChatSessions(created.id());
         log.info("Создан bootstrap admin '{}'", username);
+        if (claimedChats > 0) {
+            log.info("Bootstrap admin '{}' получил legacy-диалоги: {}", username, claimedChats);
+        }
     }
 
     private static String clean(String value) {

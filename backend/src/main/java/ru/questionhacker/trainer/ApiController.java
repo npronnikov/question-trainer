@@ -20,6 +20,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import ru.questionhacker.trainer.auth.AuthService;
+
 @RestController
 @RequestMapping("/api")
 public class ApiController {
@@ -31,10 +33,11 @@ public class ApiController {
     private final AcpGateway acp;
     private final AppProperties properties;
     private final PracticeService practice;
+    private final AuthService auth;
 
     public ApiController(DatabaseStore store, ChatService chat, RunStreamRegistry streams,
                          ScenarioService scenarios, AcpGateway acp, AppProperties properties,
-                         PracticeService practice) {
+                         PracticeService practice, AuthService auth) {
         this.store = store;
         this.chat = chat;
         this.streams = streams;
@@ -42,6 +45,7 @@ public class ApiController {
         this.acp = acp;
         this.properties = properties;
         this.practice = practice;
+        this.auth = auth;
     }
 
     @GetMapping("/system/status")
@@ -58,33 +62,34 @@ public class ApiController {
 
     @GetMapping("/chat/sessions")
     public List<DatabaseStore.SessionRow> sessions() {
-        return store.listSessions();
+        return store.listSessions(auth.requireCurrentUser().id());
     }
 
     @PostMapping("/chat/sessions")
     public DatabaseStore.SessionRow createSession(@RequestBody(required = false) CreateSessionRequest request) {
-        return chat.createSession(request == null ? null : request.title());
+        return chat.createSession(auth.requireCurrentUser().id(), request == null ? null : request.title());
     }
 
     @DeleteMapping("/chat/sessions/{sessionId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteSession(@PathVariable UUID sessionId) {
-        chat.deleteSession(sessionId);
+        chat.deleteSession(auth.requireCurrentUser().id(), sessionId);
     }
 
     @GetMapping("/chat/sessions/{sessionId}/messages")
     public List<DatabaseStore.MessageRow> messages(@PathVariable UUID sessionId) {
-        return store.listMessages(sessionId);
+        return chat.messages(auth.requireCurrentUser().id(), sessionId);
     }
 
     @PostMapping("/chat/sessions/{sessionId}/messages")
     public RunResponse send(@PathVariable UUID sessionId, @Valid @RequestBody SendMessageRequest request) {
-        return new RunResponse(chat.send(sessionId, request.text(), request.model()));
+        return new RunResponse(chat.send(
+                auth.requireCurrentUser().id(), sessionId, request.text(), request.model()));
     }
 
     @GetMapping(value = "/chat/runs/{runId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter events(@PathVariable UUID runId) {
-        return streams.subscribe(runId);
+        return streams.subscribe(auth.requireCurrentUser().id(), runId);
     }
 
     @GetMapping("/scenarios/generated")

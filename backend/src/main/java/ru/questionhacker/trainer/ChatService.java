@@ -36,19 +36,24 @@ public class ChatService {
         this.properties = properties;
     }
 
-    public DatabaseStore.SessionRow createSession(String title) {
+    public DatabaseStore.SessionRow createSession(UUID ownerId, String title) {
         String safeTitle = title == null || title.isBlank() ? "Новый диалог" : title.strip();
-        return store.createSession(safeTitle.substring(0, Math.min(180, safeTitle.length())));
+        return store.createSession(ownerId, safeTitle.substring(0, Math.min(180, safeTitle.length())));
     }
 
-    public void deleteSession(UUID sessionId) {
-        if (!store.deleteSession(sessionId)) {
+    public void deleteSession(UUID ownerId, UUID sessionId) {
+        if (!store.deleteSession(ownerId, sessionId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Диалог не найден");
         }
     }
 
-    public UUID send(UUID sessionId, String text, String model) {
-        var session = requireSession(sessionId);
+    public List<DatabaseStore.MessageRow> messages(UUID ownerId, UUID sessionId) {
+        requireSession(ownerId, sessionId);
+        return store.listMessages(ownerId, sessionId);
+    }
+
+    public UUID send(UUID ownerId, UUID sessionId, String text, String model) {
+        var session = requireSession(ownerId, sessionId);
         String clean = text == null ? "" : text.strip();
         if (clean.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Сообщение не должно быть пустым");
@@ -57,39 +62,39 @@ public class ChatService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Сообщение превышает допустимую длину");
         }
 
-        store.addMessage(sessionId, "USER", "USER", clean);
+        store.addMessage(ownerId, sessionId, "USER", "USER", clean);
         if ("Новый диалог".equals(session.title())) {
-            store.touchSession(sessionId, makeTitle(clean));
+            store.touchSession(ownerId, sessionId, makeTitle(clean));
         }
-        UUID runId = streams.create();
+        UUID runId = streams.create(ownerId);
         String selectedModel = validateModel(model);
-        executor.submit(() -> execute(runId, sessionId, clean, selectedModel));
+        executor.submit(() -> execute(runId, ownerId, sessionId, clean, selectedModel));
         return runId;
     }
 
-    private void execute(UUID runId, UUID sessionId, String userText, String model) {
+    private void execute(UUID runId, UUID ownerId, UUID sessionId, String userText, String model) {
         var streamed = new AtomicBoolean(false);
         var partial = new StringBuilder();
         try {
-            String prompt = buildPrompt(sessionId);
+            String prompt = buildPrompt(ownerId, sessionId);
             String answer = acp.ask(prompt, model, chunk -> {
                 streamed.set(true);
                 partial.append(chunk);
                 streams.delta(runId, chunk);
             });
-            var saved = store.addMessage(sessionId, "ASSISTANT", "ACP", answer);
+            var saved = store.addMessage(ownerId, sessionId, "ASSISTANT", "ACP", answer);
             streams.done(runId, "ACP", saved.id());
         } catch (Exception error) {
             log.warn("Coach run {} failed", runId, error);
             if (streamed.get()) {
                 String answer = partial + "\n\n---\n\n_Ответ ACP-агента оборвался: " + safe(error.getMessage()) + "_";
-                var saved = store.addMessage(sessionId, "ASSISTANT", "ACP_PARTIAL", answer);
+                var saved = store.addMessage(ownerId, sessionId, "ASSISTANT", "ACP_PARTIAL", answer);
                 streams.delta(runId, "\n\n---\n\n_Соединение с ACP-агентом оборвалось. Частичный ответ сохранён._");
                 streams.done(runId, "ACP_PARTIAL", saved.id());
             } else if (properties.acp().fallbackEnabled()) {
                 String answer = fallback.answer(userText);
                 streamFallback(runId, answer);
-                var saved = store.addMessage(sessionId, "ASSISTANT", "FALLBACK", answer);
+                var saved = store.addMessage(ownerId, sessionId, "ASSISTANT", "FALLBACK", answer);
                 streams.done(runId, "FALLBACK", saved.id());
             } else {
                 streams.error(runId, "ACP-агент недоступен: " + safe(error.getMessage()));
@@ -108,8 +113,9 @@ public class ChatService {
         return model;
     }
 
-    private String buildPrompt(UUID sessionId) {
-        List<DatabaseStore.MessageRow> history = store.latestMessages(sessionId, properties.chat().historyLimit());
+    private String buildPrompt(UUID ownerId, UUID sessionId) {
+        List<DatabaseStore.MessageRow> history = store.latestMessages(
+                ownerId, sessionId, properties.chat().historyLimit());
         var result = new StringBuilder(prompts.trainingCoach());
         result.append("\n\n# Контекст диалога\n\n");
         for (var message : history) {
@@ -129,8 +135,8 @@ public class ChatService {
         }
     }
 
-    private DatabaseStore.SessionRow requireSession(UUID id) {
-        return store.findSession(id)
+    private DatabaseStore.SessionRow requireSession(UUID ownerId, UUID id) {
+        return store.findSession(ownerId, id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Диалог не найден"));
     }
 

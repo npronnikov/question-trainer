@@ -20,48 +20,64 @@ public class DatabaseStore {
         this.jdbc = jdbc;
     }
 
-    public SessionRow createSession(String title) {
+    public SessionRow createSession(UUID ownerId, String title) {
         var now = OffsetDateTime.now(ZoneOffset.UTC);
-        var row = new SessionRow(UUID.randomUUID(), title, null, now, now);
-        jdbc.update("INSERT INTO chat_session(id,title,acp_session_id,created_at,updated_at) VALUES (?,?,?,?,?)",
-                row.id(), row.title(), row.acpSessionId(), row.createdAt(), row.updatedAt());
+        var row = new SessionRow(UUID.randomUUID(), ownerId, title, null, now, now);
+        jdbc.update("""
+                INSERT INTO chat_session(id,owner_id,title,acp_session_id,created_at,updated_at)
+                VALUES (?,?,?,?,?,?)
+                """, row.id(), row.ownerId(), row.title(), row.acpSessionId(), row.createdAt(), row.updatedAt());
         return row;
     }
 
-    public Optional<SessionRow> findSession(UUID id) {
-        return jdbc.query("SELECT * FROM chat_session WHERE id=?", this::mapSession, id).stream().findFirst();
+    public Optional<SessionRow> findSession(UUID ownerId, UUID id) {
+        return jdbc.query("SELECT * FROM chat_session WHERE owner_id=? AND id=?",
+                this::mapSession, ownerId, id).stream().findFirst();
     }
 
-    public List<SessionRow> listSessions() {
-        return jdbc.query("SELECT * FROM chat_session ORDER BY updated_at DESC", this::mapSession);
+    public List<SessionRow> listSessions(UUID ownerId) {
+        return jdbc.query("SELECT * FROM chat_session WHERE owner_id=? ORDER BY updated_at DESC",
+                this::mapSession, ownerId);
     }
 
-    public boolean deleteSession(UUID id) {
-        return jdbc.update("DELETE FROM chat_session WHERE id=?", id) > 0;
+    public boolean deleteSession(UUID ownerId, UUID id) {
+        return jdbc.update("DELETE FROM chat_session WHERE owner_id=? AND id=?", ownerId, id) > 0;
     }
 
-    public void touchSession(UUID id, String title) {
-        jdbc.update("UPDATE chat_session SET title=?, updated_at=? WHERE id=?",
-                title, OffsetDateTime.now(ZoneOffset.UTC), id);
+    public void touchSession(UUID ownerId, UUID id, String title) {
+        jdbc.update("UPDATE chat_session SET title=?, updated_at=? WHERE owner_id=? AND id=?",
+                title, OffsetDateTime.now(ZoneOffset.UTC), ownerId, id);
     }
 
-    public MessageRow addMessage(UUID sessionId, String role, String source, String content) {
+    public MessageRow addMessage(UUID ownerId, UUID sessionId, String role, String source, String content) {
         var row = new MessageRow(UUID.randomUUID(), sessionId, role, source, content,
                 OffsetDateTime.now(ZoneOffset.UTC));
-        jdbc.update("INSERT INTO chat_message(id,session_id,role,source,content,created_at) VALUES (?,?,?,?,?,?)",
-                row.id(), row.sessionId(), row.role(), row.source(), row.content(), row.createdAt());
-        jdbc.update("UPDATE chat_session SET updated_at=? WHERE id=?", row.createdAt(), sessionId);
+        int inserted = jdbc.update("""
+                INSERT INTO chat_message(id,session_id,role,source,content,created_at)
+                SELECT ?,id,?,?,?,? FROM chat_session WHERE owner_id=? AND id=?
+                """, row.id(), row.role(), row.source(), row.content(), row.createdAt(), ownerId, sessionId);
+        if (inserted == 0) throw new IllegalArgumentException("Диалог не найден");
+        jdbc.update("UPDATE chat_session SET updated_at=? WHERE owner_id=? AND id=?",
+                row.createdAt(), ownerId, sessionId);
         return row;
     }
 
-    public List<MessageRow> listMessages(UUID sessionId) {
-        return jdbc.query("SELECT * FROM chat_message WHERE session_id=? ORDER BY created_at ASC",
-                this::mapMessage, sessionId);
+    public List<MessageRow> listMessages(UUID ownerId, UUID sessionId) {
+        return jdbc.query("""
+                SELECT m.* FROM chat_message m
+                JOIN chat_session s ON s.id=m.session_id
+                WHERE s.owner_id=? AND s.id=?
+                ORDER BY m.created_at ASC
+                """, this::mapMessage, ownerId, sessionId);
     }
 
-    public List<MessageRow> latestMessages(UUID sessionId, int limit) {
-        var reversed = jdbc.query("SELECT * FROM chat_message WHERE session_id=? ORDER BY created_at DESC LIMIT ?",
-                this::mapMessage, sessionId, limit);
+    public List<MessageRow> latestMessages(UUID ownerId, UUID sessionId, int limit) {
+        var reversed = jdbc.query("""
+                SELECT m.* FROM chat_message m
+                JOIN chat_session s ON s.id=m.session_id
+                WHERE s.owner_id=? AND s.id=?
+                ORDER BY m.created_at DESC LIMIT ?
+                """, this::mapMessage, ownerId, sessionId, limit);
         return reversed.reversed();
     }
 
@@ -80,6 +96,7 @@ public class DatabaseStore {
     private SessionRow mapSession(ResultSet rs, int ignored) throws SQLException {
         return new SessionRow(
                 rs.getObject("id", UUID.class),
+                rs.getObject("owner_id", UUID.class),
                 rs.getString("title"),
                 rs.getString("acp_session_id"),
                 rs.getObject("created_at", OffsetDateTime.class),
@@ -105,7 +122,7 @@ public class DatabaseStore {
                 rs.getObject("created_at", OffsetDateTime.class));
     }
 
-    public record SessionRow(UUID id, String title, String acpSessionId,
+    public record SessionRow(UUID id, UUID ownerId, String title, String acpSessionId,
                              OffsetDateTime createdAt, OffsetDateTime updatedAt) {
     }
 
