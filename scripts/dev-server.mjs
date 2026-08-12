@@ -17,6 +17,8 @@ const types = {
 
 function proxy(request, response) {
   const target = new URL(request.url, backend);
+  // Browser and API intentionally share this origin: forward cookies and CSRF
+  // headers unchanged, replacing only Host for the upstream connection.
   const upstream = http.request(target, {
     method: request.method,
     headers: { ...request.headers, host: backend.host }
