@@ -161,3 +161,9 @@ test('practice and coach are independent hash routes', async () => {
   assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.main-nav\s*\{[^}]*overflow-x:\s*auto;/);
   assert.doesNotMatch(css, /\.coach-mode-switch/);
 });
+
+test('route split invalidates the offline shell cache', async () => {
+  const serviceWorker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
+
+  assert.match(serviceWorker, /const CACHE = 'question-hacker-v9';/);
+});
