@@ -12,6 +12,46 @@
 </head>
 <body>
   <div class="noise" aria-hidden="true"></div>
+
+  <main class="auth-view" id="auth-view" aria-labelledby="auth-title" hidden>
+    <section class="auth-card">
+      <div class="auth-brand" aria-hidden="true">?</div>
+      <p class="eyebrow">QUESTION / HACK</p>
+      <h1 id="auth-title">Войдите в свою<br>траекторию обучения.</h1>
+      <p class="auth-lead">Прогресс, практика и диалоги хранятся на сервере и доступны только вашему аккаунту.</p>
+
+      <div class="auth-switch" role="tablist" aria-label="Способ входа">
+        <button type="button" role="tab" aria-selected="true" data-auth-mode="login">Вход</button>
+        <button type="button" role="tab" aria-selected="false" data-auth-mode="register">Регистрация</button>
+      </div>
+
+      <form class="auth-form" id="login-form">
+        <label for="login-identity">Имя пользователя или email</label>
+        <input id="login-identity" name="login" type="text" maxlength="254" autocomplete="username" required>
+        <label for="login-password">Пароль</label>
+        <input id="login-password" name="password" type="password" maxlength="200" autocomplete="current-password" required>
+        <button class="primary-button auth-submit" type="submit">Войти <span>→</span></button>
+      </form>
+
+      <form class="auth-form" id="register-form" hidden>
+        <label for="register-username">Имя пользователя</label>
+        <input id="register-username" name="username" type="text" minlength="3" maxlength="80" autocomplete="username" required>
+        <label for="register-email">Email</label>
+        <input id="register-email" name="email" type="email" maxlength="254" autocomplete="email" required>
+        <label for="register-password">Пароль — не менее 12 символов</label>
+        <input id="register-password" name="password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required>
+        <button class="primary-button auth-submit" type="submit">Создать аккаунт <span>→</span></button>
+      </form>
+
+      <p class="auth-error" id="auth-error" role="alert" aria-live="assertive"></p>
+    </section>
+    <aside class="auth-promise" aria-label="Принцип тренажёра">
+      <span>ВОПРОС → ОТВЕТ → РАССУЖДЕНИЕ → РЕШЕНИЕ</span>
+      <blockquote>«Сервер оценивает полноту хода мысли, соответствие категории и силу вопроса — интерфейс только помогает пройти путь.»</blockquote>
+    </aside>
+  </main>
+
+  <div id="app-shell" hidden>
   <header class="topbar">
     <a class="brand" href="#theory" data-route="theory" aria-label="На главную">
       <span class="brand-mark">?</span>
@@ -23,8 +63,8 @@
       <button class="nav-link" data-route="coach">Обучение</button>
     </nav>
     <div class="header-meta">
-      <span class="connection-dot" id="connection-dot"></span>
-      <span id="connection-label">офлайн-ядро готово</span>
+      <span class="backend-state"><span class="connection-dot" id="connection-dot"></span><span id="connection-label">проверяем сервер</span></span>
+      <span class="account-state"><strong id="current-user"></strong><button class="text-button" id="logout-button" type="button">Выйти</button></span>
     </div>
   </header>
 
@@ -225,9 +265,12 @@
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </div>
 
   <script src="data/theory.js"></script>
   <script src="data/scenarios.js"></script>
+  <script src="api.js"></script>
+  <script src="auth.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

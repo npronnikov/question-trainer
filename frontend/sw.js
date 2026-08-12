@@ -1,6 +1,6 @@
-const CACHE = 'question-hacker-v6';
+const CACHE = 'question-hacker-v7';
 const OFFLINE = [
-  './', './index.html', './styles.css', './app.js', './manifest.webmanifest',
+  './', './index.html', './styles.css', './api.js', './auth.js', './app.js', './manifest.webmanifest',
   './assets/icon.svg', './data/theory.js', './data/theory-expansion.json', './data/scenarios.js'
 ];
 

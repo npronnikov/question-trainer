@@ -7,8 +7,7 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
-  const API_BASE = location.protocol === 'file:' ? 'http://localhost:8080/api' : '/api';
-
+  let booted = false;
   let currentTheoryId = categories[0]?.id;
   let trainerCard = null;
   let trainerOptions = [];
@@ -20,6 +19,7 @@
   let currentSessionId = null;
   let pendingDeleteSession = null;
   let sending = false;
+  let activeEventSource = null;
   let selectedModel = null;
   let coachMode = 'chat';
   let practiceState = { scenario: null, attempt: 1, previousFeedback: '', passed: false };
@@ -305,16 +305,7 @@
   }
 
   async function api(path, options = {}) {
-    const response = await fetch(`${API_BASE}${path}`, {
-      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-      ...options
-    });
-    if (!response.ok) {
-      let message = `${response.status} ${response.statusText}`;
-      try { message = (await response.json()).message || message; } catch { /* empty */ }
-      throw new Error(message);
-    }
-    return response.status === 204 ? null : response.json();
+    return window.QH_API.request(`/api${path}`, options);
   }
 
   async function initChat() {
@@ -531,7 +522,8 @@
   }
 
   function consumeRun(runId, streamMessage) {
-    const source = new EventSource(`${API_BASE}/chat/runs/${runId}/events`);
+    const source = new EventSource(`/api/chat/runs/${runId}/events`);
+    activeEventSource = source;
     source.addEventListener('delta', event => {
       const data = JSON.parse(event.data);
       streamMessage.markdown += data.text || '';
@@ -540,6 +532,7 @@
     source.addEventListener('done', event => {
       const data = JSON.parse(event.data);
       source.close();
+      activeEventSource = null;
       finishStreaming(streamMessage, streamMessage.markdown, data.source || 'ACP');
       sending = false;
       $('#send-message').disabled = false;
@@ -548,6 +541,7 @@
     source.addEventListener('failure', event => {
       const data = JSON.parse(event.data);
       source.close();
+      activeEventSource = null;
       finishStreaming(streamMessage, `## Агент недоступен\n\n${data.message || 'Неизвестная ошибка'}`, 'ERROR');
       sending = false;
       $('#send-message').disabled = false;
@@ -555,6 +549,7 @@
     source.onerror = () => {
       if (source.readyState === EventSource.CLOSED) return;
       source.close();
+      activeEventSource = null;
       if (sending) {
         finishStreaming(streamMessage, streamMessage.markdown || '## Поток прерван\n\nПроверьте backend и конфигурацию ACP.', 'INTERRUPTED');
         sending = false;
@@ -862,5 +857,18 @@
     }
   }
 
-  boot();
+  window.QH_APP = Object.freeze({
+    start() {
+      if (booted) return;
+      booted = true;
+      boot();
+    },
+    stop() {
+      activeEventSource?.close();
+      activeEventSource = null;
+      sending = false;
+      const sendButton = $('#send-message');
+      if (sendButton) sendButton.disabled = false;
+    }
+  });
 })();
