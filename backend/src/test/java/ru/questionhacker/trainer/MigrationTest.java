@@ -69,4 +69,13 @@ class MigrationTest {
 
         assertThat(count).isEqualTo(4);
     }
+
+    @Test
+    void flywayCreatesScenarioModerationTables() {
+        Integer count = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+                WHERE UPPER(TABLE_NAME) IN ('SCENARIO_CANDIDATE', 'MODERATION_ACTION')
+                """, Integer.class);
+        assertThat(count).isEqualTo(2);
+    }
 }
