@@ -21,23 +21,25 @@ public class TrainerEngine {
     private static final Duration ISSUANCE_TTL = Duration.ofMinutes(30);
 
     private final TrainerRepository trainer;
+    private final AdaptiveSelector selector;
     private final Clock clock;
 
     @Autowired
-    public TrainerEngine(TrainerRepository trainer) {
-        this(trainer, Clock.systemUTC());
+    public TrainerEngine(TrainerRepository trainer, AdaptiveSelector selector) {
+        this(trainer, selector, Clock.systemUTC());
     }
 
-    TrainerEngine(TrainerRepository trainer, Clock clock) {
+    TrainerEngine(TrainerRepository trainer, AdaptiveSelector selector, Clock clock) {
         this.trainer = trainer;
+        this.selector = selector;
         this.clock = clock;
     }
 
     @Transactional
     public NextCard next(UUID ownerId, String requestedDifficulty) {
         String difficulty = normalizeDifficulty(requestedDifficulty);
-        var scenario = trainer.selectForIssuance(ownerId, difficulty)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Нет доступных карточек"));
+        var selection = selector.select(ownerId, difficulty);
+        var scenario = selection.scenario();
         List<CardOption> options = trainer.options(scenario.id()).stream()
                 .map(option -> new CardOption(option.code(), option.name()))
                 .toList();

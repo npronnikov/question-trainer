@@ -3,6 +3,7 @@ package ru.questionhacker.trainer.trainer;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -39,6 +40,118 @@ public class TrainerRepository {
                 ? jdbc.query(sql, this::scenarioRow, ownerId)
                 : jdbc.query(sql, this::scenarioRow, difficulty, ownerId);
         return rows.stream().findFirst();
+    }
+
+    public Optional<ScenarioRow> selectWeak(UUID ownerId, String difficulty) {
+        String difficultyClause = difficulty == null ? "" : " AND s.difficulty=? ";
+        String sql = """
+                SELECT s.id, s.external_key, s.category_code, s.difficulty, s.domain_text,
+                       s.situation_text, s.question_text, s.explanation_text,
+                       s.confused_with, s.contrast_explanation
+                FROM scenario s
+                LEFT JOIN category_mastery cm
+                  ON cm.owner_id=? AND cm.category_code=s.category_code
+                WHERE s.published=TRUE
+                """ + difficultyClause + """
+                ORDER BY
+                  CASE WHEN EXISTS (
+                    SELECT 1 FROM trainer_issuance recent
+                    JOIN scenario recent_scenario ON recent_scenario.id=recent.scenario_id
+                    WHERE recent.owner_id=?
+                      AND recent_scenario.category_code=s.category_code
+                      AND recent.issued_at >= DATEADD('DAY', -2, CURRENT_TIMESTAMP)
+                  ) THEN 1 ELSE 0 END,
+                  COALESCE(cm.mastery_score, 0),
+                  COALESCE((
+                    SELECT AVG(CASE WHEN ta.correct THEN 1.0 ELSE 0.0 END)
+                    FROM trainer_attempt ta
+                    JOIN scenario attempted ON attempted.id=ta.scenario_id
+                    WHERE ta.owner_id=? AND attempted.category_code=s.category_code
+                  ), 0),
+                  CASE s.difficulty WHEN 'L1' THEN 1 WHEN 'L2' THEN 2 ELSE 3 END,
+                  s.external_key
+                LIMIT 1
+                """;
+        List<Object> args = new ArrayList<>();
+        args.add(ownerId);
+        if (difficulty != null) args.add(difficulty);
+        args.add(ownerId);
+        args.add(ownerId);
+        return jdbc.query(sql, this::scenarioRow, args.toArray()).stream().findFirst();
+    }
+
+    public Optional<ScenarioRow> selectConfusion(UUID ownerId, String difficulty) {
+        List<String> targets = jdbc.query("""
+                SELECT correct_category_code
+                FROM category_confusion
+                WHERE owner_id=?
+                ORDER BY confusion_count DESC, last_confused_at DESC
+                LIMIT 1
+                """, (rs, row) -> rs.getString("correct_category_code"), ownerId);
+        if (targets.isEmpty()) return Optional.empty();
+        return selectCategoryCard(ownerId, difficulty, targets.getFirst());
+    }
+
+    public Optional<ScenarioRow> selectReview(UUID ownerId, String difficulty) {
+        String difficultyClause = difficulty == null ? "" : " AND s.difficulty=? ";
+        String sql = """
+                SELECT s.id, s.external_key, s.category_code, s.difficulty, s.domain_text,
+                       s.situation_text, s.question_text, s.explanation_text,
+                       s.confused_with, s.contrast_explanation
+                FROM scenario s
+                JOIN category_mastery cm
+                  ON cm.owner_id=? AND cm.category_code=s.category_code
+                WHERE s.published=TRUE
+                  AND (cm.next_review_at IS NULL OR cm.next_review_at <= CURRENT_TIMESTAMP)
+                """ + difficultyClause + """
+                ORDER BY
+                  CASE WHEN EXISTS (
+                    SELECT 1 FROM trainer_issuance recent
+                    JOIN scenario recent_scenario ON recent_scenario.id=recent.scenario_id
+                    WHERE recent.owner_id=?
+                      AND recent_scenario.category_code=s.category_code
+                      AND recent.issued_at >= DATEADD('DAY', -2, CURRENT_TIMESTAMP)
+                  ) THEN 1 ELSE 0 END,
+                  cm.next_review_at NULLS FIRST,
+                  cm.last_seen_at NULLS FIRST,
+                  cm.mastery_score,
+                  s.external_key
+                LIMIT 1
+                """;
+        List<Object> args = new ArrayList<>();
+        args.add(ownerId);
+        if (difficulty != null) args.add(difficulty);
+        args.add(ownerId);
+        return jdbc.query(sql, this::scenarioRow, args.toArray()).stream().findFirst();
+    }
+
+    private Optional<ScenarioRow> selectCategoryCard(UUID ownerId, String difficulty,
+                                                     String categoryCode) {
+        String difficultyClause = difficulty == null ? "" : " AND s.difficulty=? ";
+        String sql = """
+                SELECT s.id, s.external_key, s.category_code, s.difficulty, s.domain_text,
+                       s.situation_text, s.question_text, s.explanation_text,
+                       s.confused_with, s.contrast_explanation
+                FROM scenario s
+                WHERE s.published=TRUE AND s.category_code=?
+                """ + difficultyClause + """
+                ORDER BY
+                  CASE WHEN EXISTS (
+                    SELECT 1 FROM trainer_issuance recent
+                    JOIN scenario recent_scenario ON recent_scenario.id=recent.scenario_id
+                    WHERE recent.owner_id=?
+                      AND recent_scenario.category_code=s.category_code
+                      AND recent.issued_at >= DATEADD('DAY', -2, CURRENT_TIMESTAMP)
+                  ) THEN 1 ELSE 0 END,
+                  CASE s.difficulty WHEN 'L3' THEN 1 WHEN 'L2' THEN 2 ELSE 3 END,
+                  s.external_key
+                LIMIT 1
+                """;
+        List<Object> args = new ArrayList<>();
+        args.add(categoryCode);
+        if (difficulty != null) args.add(difficulty);
+        args.add(ownerId);
+        return jdbc.query(sql, this::scenarioRow, args.toArray()).stream().findFirst();
     }
 
     public List<OptionRow> options(UUID scenarioId) {
@@ -196,6 +309,46 @@ public class TrainerRepository {
         }
     }
 
+    public List<CategoryProgressRow> categoryProgress(UUID ownerId) {
+        return jdbc.query("""
+                SELECT c.code, c.name,
+                       COALESCE(cm.mastery_score, 0) AS mastery_score,
+                       COALESCE(cm.attempt_count, 0) AS attempt_count,
+                       COALESCE(cm.correct_count, 0) AS correct_count,
+                       cm.last_seen_at, cm.next_review_at
+                FROM category c
+                LEFT JOIN category_mastery cm
+                  ON cm.owner_id=? AND cm.category_code=c.code
+                ORDER BY c.sort_order
+                """, (rs, row) -> new CategoryProgressRow(
+                rs.getString("code"),
+                rs.getString("name"),
+                rs.getDouble("mastery_score"),
+                rs.getInt("attempt_count"),
+                rs.getInt("correct_count"),
+                rs.getObject("last_seen_at", OffsetDateTime.class),
+                rs.getObject("next_review_at", OffsetDateTime.class)), ownerId);
+    }
+
+    public List<ConfusionRow> confusions(UUID ownerId) {
+        return jdbc.query("""
+                SELECT cc.selected_category_code, selected.name AS selected_name,
+                       cc.correct_category_code, correct.name AS correct_name,
+                       cc.confusion_count, cc.last_confused_at
+                FROM category_confusion cc
+                JOIN category selected ON selected.code=cc.selected_category_code
+                JOIN category correct ON correct.code=cc.correct_category_code
+                WHERE cc.owner_id=?
+                ORDER BY cc.confusion_count DESC, cc.last_confused_at DESC
+                """, (rs, row) -> new ConfusionRow(
+                rs.getString("selected_category_code"),
+                rs.getString("selected_name"),
+                rs.getString("correct_category_code"),
+                rs.getString("correct_name"),
+                rs.getInt("confusion_count"),
+                rs.getObject("last_confused_at", OffsetDateTime.class)), ownerId);
+    }
+
     private ScenarioRow scenarioRow(ResultSet rs, int ignored) throws SQLException {
         return new ScenarioRow(
                 rs.getObject("id", UUID.class), rs.getString("external_key"),
@@ -260,5 +413,24 @@ public class TrainerRepository {
             int correctAnswers,
             OffsetDateTime lastSeenAt,
             OffsetDateTime nextReviewAt) {
+    }
+
+    public record CategoryProgressRow(
+            String code,
+            String name,
+            double score,
+            int attempts,
+            int correctAnswers,
+            OffsetDateTime lastSeenAt,
+            OffsetDateTime nextReviewAt) {
+    }
+
+    public record ConfusionRow(
+            String selectedCategory,
+            String selectedName,
+            String correctCategory,
+            String correctName,
+            int count,
+            OffsetDateTime lastConfusedAt) {
     }
 }
