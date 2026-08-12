@@ -207,11 +207,12 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visib
 .source-register li span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
 .theory-formula { margin-top: 36px; }
 .theory-evidence { margin-top: 42px; padding-top: 34px; border-top: 3px solid var(--ink); }
-.evidence-card { display: grid; grid-template-columns: minmax(180px, .7fr) 1.5fr auto; gap: 22px; align-items: start; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.evidence-card { display: grid; grid-template-columns: minmax(180px, .7fr) 1.5fr; gap: 22px; align-items: start; padding: 20px 0; border-bottom: 1px solid var(--line); }
 .evidence-card h4 { margin: 6px 0 0; font-size: 18px; }
 .evidence-card span { color: var(--violet); font: 10px var(--mono); }
 .evidence-card p { margin: 0; color: #55564f; line-height: 1.55; }
 .evidence-card a { color: #5144c5; font-size: 12px; }
+.evidence-meta a { display: inline-block; margin-top: 10px; }
 .contrast-list { margin-top: 36px; padding: 25px; border-radius: 18px; background: var(--paper-2); }
 .contrast-list h3 { margin: 0 0 18px; font-size: 24px; }
 .contrast-list p { margin: 10px 0; line-height: 1.5; }

@@ -129,7 +129,7 @@
       <div class="warning-box"><b>!</b><p><strong>Анти-паттерн.</strong> ${escapeHtml(category.mistake)}</p></div>
       <div class="cue-line"><strong>Контрольный сигнал:</strong> ${escapeHtml(category.cue)}</div>
       <section class="theory-evidence"><div class="expansion-head"><span>ДОКАЗАТЕЛЬНЫЙ СЛОЙ</span><strong>${evidence.length} материалов</strong></div>
-        ${evidence.map(section => `<article class="evidence-card"><div><span>${escapeHtml(section.evidenceGrade || '—')}</span><h4>${escapeHtml(section.title)}</h4></div><p>${escapeHtml(section.content)}</p>${section.source ? `<a href="${escapeHtml(section.source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(section.source.title)} ↗</a>` : ''}</article>`).join('')}
+        ${evidence.map(section => `<article class="evidence-card"><div class="evidence-meta"><span>${escapeHtml(section.evidenceGrade || '—')}</span><h4>${escapeHtml(section.title)}</h4>${section.source ? `<a href="${escapeHtml(section.source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(section.source.title)} ↗</a>` : ''}</div><p>${escapeHtml(section.content)}</p></article>`).join('')}
       </section>
       ${category.contrasts?.length ? `<section class="contrast-list"><h3>Не перепутать</h3>${category.contrasts.map(item => `<p><strong>${escapeHtml(item.otherName)}:</strong> ${escapeHtml(item.text)}</p>`).join('')}</section>` : ''}`;
   }

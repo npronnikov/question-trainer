@@ -56,3 +56,13 @@ test('reduced motion and focusable feedback are explicit', async () => {
   assert.match(html, /id="practice-feedback"[^>]*tabindex="-1"/);
   assert.match(html, /id="trainer-feedback"[^>]*tabindex="-1"/);
 });
+
+test('theory omits the server-program footer and evidence uses two content columns', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+  const css = await fs.readFile(new URL('styles.css', frontend), 'utf8');
+
+  assert.doesNotMatch(html, /СЕРВЕРНАЯ ПРОГРАММА/);
+  assert.match(app, /class="evidence-meta"[\s\S]*section\.source[\s\S]*<\/div><p>/);
+  assert.match(css, /\.evidence-card\s*\{[^}]*grid-template-columns:\s*minmax\(180px,\s*\.7fr\)\s+1\.5fr;/);
+});
