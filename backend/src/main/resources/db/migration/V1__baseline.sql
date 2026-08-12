@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS chat_message (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL,
   CONSTRAINT fk_message_session FOREIGN KEY (session_id) REFERENCES chat_session(id) ON DELETE CASCADE
 );
+
 CREATE INDEX IF NOT EXISTS idx_message_session_created ON chat_message(session_id, created_at);
 
 CREATE TABLE IF NOT EXISTS generated_scenario (

@@ -84,10 +84,6 @@ Add to `backend/pom.xml`:
 
 ```xml
 <dependency>
-  <groupId>org.springframework.boot</groupId>
-  <artifactId>spring-boot-starter-security</artifactId>
-</dependency>
-<dependency>
   <groupId>org.flywaydb</groupId>
   <artifactId>flyway-core</artifactId>
 </dependency>
@@ -277,6 +273,15 @@ Expected: FAIL because `/api/chat/sessions` is not protected and CSRF is not enf
 
 - [ ] **Step 3: Implement UserDetailsService and filter chain**
 
+First add Spring Security to `backend/pom.xml`:
+
+```xml
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-security</artifactId>
+</dependency>
+```
+
 Use this authorization map:
 
 ```java
@@ -320,7 +325,7 @@ Expected: system status returns 200, protected endpoint 401, mutation without CS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/src/main/java/ru/questionhacker/trainer/auth/DatabaseUserDetailsService.java backend/src/main/java/ru/questionhacker/trainer/auth/SecurityConfig.java backend/src/main/resources/application.yml backend/src/test/java/ru/questionhacker/trainer/auth/SecurityConfigTest.java
+git add backend/pom.xml backend/src/main/java/ru/questionhacker/trainer/auth/DatabaseUserDetailsService.java backend/src/main/java/ru/questionhacker/trainer/auth/SecurityConfig.java backend/src/main/resources/application.yml backend/src/test/java/ru/questionhacker/trainer/auth/SecurityConfigTest.java
 git commit -m "feat: enforce session and csrf security"
 ```
 
