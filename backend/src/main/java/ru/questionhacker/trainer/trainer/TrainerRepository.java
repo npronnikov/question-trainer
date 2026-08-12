@@ -63,6 +63,139 @@ public class TrainerRepository {
         return new IssuanceRow(id, ownerId, scenarioId, "ISSUED", issuedAt, expiresAt);
     }
 
+    public Optional<IssuedScenarioRow> findIssuedScenarioForUpdate(UUID ownerId, UUID issuanceId) {
+        List<IssuedScenarioRow> rows = jdbc.query("""
+                SELECT ti.id AS issuance_id, ti.owner_id, ti.scenario_id, ti.status,
+                       ti.issued_at, ti.expires_at,
+                       s.category_code, s.difficulty, s.explanation_text,
+                       s.confused_with, s.contrast_explanation
+                FROM trainer_issuance ti
+                JOIN scenario s ON s.id=ti.scenario_id
+                WHERE ti.owner_id=? AND ti.id=?
+                FOR UPDATE
+                """, (rs, row) -> new IssuedScenarioRow(
+                rs.getObject("issuance_id", UUID.class),
+                rs.getObject("owner_id", UUID.class),
+                rs.getObject("scenario_id", UUID.class),
+                rs.getString("status"),
+                rs.getObject("issued_at", OffsetDateTime.class),
+                rs.getObject("expires_at", OffsetDateTime.class),
+                rs.getString("category_code"),
+                rs.getString("difficulty"),
+                rs.getString("explanation_text"),
+                rs.getString("confused_with"),
+                rs.getString("contrast_explanation")), ownerId, issuanceId);
+        return rows.stream().findFirst();
+    }
+
+    public Optional<AttemptRow> findAttempt(UUID ownerId, UUID issuanceId) {
+        List<AttemptRow> rows = jdbc.query("""
+                SELECT id, issuance_id, owner_id, scenario_id, selected_category_code,
+                       rationale_text, correct, mastery_delta, created_at
+                FROM trainer_attempt
+                WHERE owner_id=? AND issuance_id=?
+                """, (rs, row) -> new AttemptRow(
+                rs.getObject("id", UUID.class),
+                rs.getObject("issuance_id", UUID.class),
+                rs.getObject("owner_id", UUID.class),
+                rs.getObject("scenario_id", UUID.class),
+                rs.getString("selected_category_code"),
+                rs.getString("rationale_text"),
+                rs.getBoolean("correct"),
+                rs.getDouble("mastery_delta"),
+                rs.getObject("created_at", OffsetDateTime.class)), ownerId, issuanceId);
+        return rows.stream().findFirst();
+    }
+
+    public boolean isScenarioOption(UUID scenarioId, String categoryCode) {
+        Integer count = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM scenario_option
+                WHERE scenario_id=? AND category_code=?
+                """, Integer.class, scenarioId, categoryCode);
+        return count != null && count > 0;
+    }
+
+    public Optional<String> contrast(String categoryCode, String otherCategoryCode) {
+        List<String> rows = jdbc.query("""
+                SELECT contrast_text FROM category_contrast
+                WHERE category_code=? AND other_category_code=?
+                """, (rs, row) -> rs.getString("contrast_text"), categoryCode, otherCategoryCode);
+        return rows.stream().findFirst();
+    }
+
+    public AttemptRow createAttempt(UUID issuanceId, UUID ownerId, UUID scenarioId,
+                                    String selectedCategory, String rationale, boolean correct,
+                                    double masteryDelta, OffsetDateTime createdAt) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO trainer_attempt(
+                  id, issuance_id, owner_id, scenario_id, selected_category_code,
+                  rationale_text, correct, mastery_delta, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, id, issuanceId, ownerId, scenarioId, selectedCategory,
+                rationale, correct, masteryDelta, createdAt);
+        return new AttemptRow(id, issuanceId, ownerId, scenarioId, selectedCategory,
+                rationale, correct, masteryDelta, createdAt);
+    }
+
+    public void markAnswered(UUID ownerId, UUID issuanceId, OffsetDateTime answeredAt) {
+        jdbc.update("""
+                UPDATE trainer_issuance SET status='ANSWERED', answered_at=?
+                WHERE owner_id=? AND id=?
+                """, answeredAt, ownerId, issuanceId);
+    }
+
+    public void markExpired(UUID ownerId, UUID issuanceId) {
+        jdbc.update("""
+                UPDATE trainer_issuance SET status='EXPIRED'
+                WHERE owner_id=? AND id=? AND status='ISSUED'
+                """, ownerId, issuanceId);
+    }
+
+    public Optional<MasteryRow> mastery(UUID ownerId, String categoryCode) {
+        List<MasteryRow> rows = jdbc.query("""
+                SELECT owner_id, category_code, mastery_score, attempt_count,
+                       correct_count, last_seen_at, next_review_at
+                FROM category_mastery
+                WHERE owner_id=? AND category_code=?
+                """, (rs, row) -> new MasteryRow(
+                rs.getObject("owner_id", UUID.class),
+                rs.getString("category_code"),
+                rs.getDouble("mastery_score"),
+                rs.getInt("attempt_count"),
+                rs.getInt("correct_count"),
+                rs.getObject("last_seen_at", OffsetDateTime.class),
+                rs.getObject("next_review_at", OffsetDateTime.class)), ownerId, categoryCode);
+        return rows.stream().findFirst();
+    }
+
+    public void saveMastery(MasteryRow value) {
+        jdbc.update("""
+                MERGE INTO category_mastery(
+                  owner_id, category_code, mastery_score, attempt_count, correct_count,
+                  last_seen_at, next_review_at
+                ) KEY(owner_id, category_code) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, value.ownerId(), value.categoryCode(), value.score(), value.attempts(),
+                value.correctAnswers(), value.lastSeenAt(), value.nextReviewAt());
+    }
+
+    public void incrementConfusion(UUID ownerId, String selectedCategory,
+                                   String correctCategory, OffsetDateTime now) {
+        int updated = jdbc.update("""
+                UPDATE category_confusion
+                SET confusion_count=confusion_count+1, last_confused_at=?
+                WHERE owner_id=? AND selected_category_code=? AND correct_category_code=?
+                """, now, ownerId, selectedCategory, correctCategory);
+        if (updated == 0) {
+            jdbc.update("""
+                    INSERT INTO category_confusion(
+                      owner_id, selected_category_code, correct_category_code,
+                      confusion_count, last_confused_at
+                    ) VALUES (?, ?, ?, 1, ?)
+                    """, ownerId, selectedCategory, correctCategory, now);
+        }
+    }
+
     private ScenarioRow scenarioRow(ResultSet rs, int ignored) throws SQLException {
         return new ScenarioRow(
                 rs.getObject("id", UUID.class), rs.getString("external_key"),
@@ -91,5 +224,41 @@ public class TrainerRepository {
     public record IssuanceRow(
             UUID id, UUID ownerId, UUID scenarioId, String status,
             OffsetDateTime issuedAt, OffsetDateTime expiresAt) {
+    }
+
+    public record IssuedScenarioRow(
+            UUID issuanceId,
+            UUID ownerId,
+            UUID scenarioId,
+            String status,
+            OffsetDateTime issuedAt,
+            OffsetDateTime expiresAt,
+            String correctCategory,
+            String difficulty,
+            String explanation,
+            String confusedWith,
+            String contrastExplanation) {
+    }
+
+    public record AttemptRow(
+            UUID id,
+            UUID issuanceId,
+            UUID ownerId,
+            UUID scenarioId,
+            String selectedCategory,
+            String rationale,
+            boolean correct,
+            double masteryDelta,
+            OffsetDateTime createdAt) {
+    }
+
+    public record MasteryRow(
+            UUID ownerId,
+            String categoryCode,
+            double score,
+            int attempts,
+            int correctAnswers,
+            OffsetDateTime lastSeenAt,
+            OffsetDateTime nextReviewAt) {
     }
 }
