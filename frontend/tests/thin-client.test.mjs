@@ -143,3 +143,16 @@ test('model popover closes when keyboard focus leaves the picker', async () => {
   assert.match(app, /addEventListener\('focusout'/);
   assert.match(app, /document\.activeElement/);
 });
+
+test('practice and coach are independent hash routes', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(html, /data-route="practice">Практика<\/button>/);
+  assert.match(html, /data-route="coach">Коуч<\/button>/);
+  assert.match(html, /id="view-learning"[^>]*data-view="learning"/);
+  assert.doesNotMatch(html, /data-coach-mode/);
+  assert.match(app, /\['practice', 'coach'\]\.includes\(route\) \? 'learning' : route/);
+  assert.match(app, /syncLearningRoute\(route\)/);
+  assert.doesNotMatch(app, /coachMode|setCoachMode/);
+});

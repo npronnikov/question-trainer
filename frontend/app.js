@@ -26,7 +26,6 @@
   let trainerLoadSequence = 0;
   let selectedModel = null;
   let availableModels = [];
-  let coachMode = 'practice';
   let currentSessionId = null;
   let sending = false;
   let activeStream = null;
@@ -63,15 +62,18 @@
 
   function setRoute(rawRoute, pushHash = true) {
     const admin = currentUser?.roles?.includes('ADMIN');
-    const allowed = admin ? ['theory', 'trainer', 'coach', 'moderation'] : ['theory', 'trainer', 'coach'];
+    const allowed = admin
+      ? ['theory', 'trainer', 'practice', 'coach', 'moderation']
+      : ['theory', 'trainer', 'practice', 'coach'];
     const route = allowed.includes(rawRoute) ? rawRoute : 'theory';
+    const viewRoute = ['practice', 'coach'].includes(route) ? 'learning' : route;
     closeModelPicker();
-    $$('.view').forEach(view => view.classList.toggle('is-active', view.dataset.view === route));
+    $$('.view').forEach(view => view.classList.toggle('is-active', view.dataset.view === viewRoute));
     $$('.nav-link').forEach(link => link.classList.toggle('is-active', link.dataset.route === route));
+    if (viewRoute === 'learning') syncLearningRoute(route);
     if (pushHash && location.hash !== `#${route}`) history.pushState(null, '', `#${route}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (route === 'trainer' && !trainerIssuance) loadTrainerCard();
-    if (route === 'coach' && coachMode === 'chat') initChat();
     if (route === 'moderation' && admin) loadModeration();
   }
 
@@ -481,16 +483,29 @@
     dialog.showModal();
   }
 
-  function setCoachMode(mode) {
-    coachMode = mode === 'chat' ? 'chat' : 'practice';
-    $$('[data-coach-mode]').forEach(button => button.classList.toggle('is-active', button.dataset.coachMode === coachMode));
-    $('#practice-panel').classList.toggle('is-hidden', coachMode !== 'practice');
-    $('#new-practice').classList.toggle('is-hidden', coachMode !== 'practice');
-    $('#message-feed').classList.toggle('is-hidden', coachMode !== 'chat');
-    $('#composer').classList.toggle('is-hidden', coachMode !== 'chat');
-    $('#session-tools').classList.toggle('is-hidden', coachMode !== 'chat');
-    $('#chat-title').textContent = coachMode === 'practice' ? 'Практика полного цикла' : 'Тренер вопросов';
-    if (coachMode === 'chat') initChat();
+  function syncLearningRoute(route) {
+    const chat = route === 'coach';
+    const practicePanel = $('#practice-panel');
+    const messageFeed = $('#message-feed');
+    const composer = $('#composer');
+    const sessionTools = $('#session-tools');
+    const practiceContext = $('#practice-route-context');
+
+    practicePanel.classList.toggle('is-hidden', chat);
+    practicePanel.inert = chat;
+    $('#new-practice').classList.toggle('is-hidden', chat);
+    messageFeed.classList.toggle('is-hidden', !chat);
+    messageFeed.inert = !chat;
+    composer.classList.toggle('is-hidden', !chat);
+    composer.inert = !chat;
+    sessionTools.classList.toggle('is-hidden', !chat);
+    sessionTools.inert = !chat;
+    practiceContext.classList.toggle('is-hidden', chat);
+    practiceContext.inert = chat;
+    $('#learning-section-label').textContent = chat ? '04 / КОУЧ' : '03 / ПРАКТИКА';
+    $('#learning-sidebar-title').textContent = chat ? 'Диалоги' : 'Полный цикл';
+    $('#chat-title').textContent = chat ? 'Тренер вопросов' : 'Практика полного цикла';
+    if (chat) initChat();
   }
 
   async function startPractice() {
@@ -645,7 +660,6 @@
   }
 
   function bindPractice() {
-    $$('[data-coach-mode]').forEach(button => button.addEventListener('click', () => setCoachMode(button.dataset.coachMode)));
     $('#start-practice').addEventListener('click', startPractice);
     $('#new-practice').addEventListener('click', startPractice);
     $('#practice-form').addEventListener('submit', submitPractice);
@@ -942,7 +956,6 @@
     bindAcpStatus();
     bindModelPicker();
     await Promise.allSettled([loadCurriculum(), refreshProgressView(), loadSystemStatus()]);
-    setCoachMode('practice');
     setRoute(location.hash.slice(1) || 'theory', false);
     if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
   }

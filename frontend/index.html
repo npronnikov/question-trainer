@@ -56,7 +56,8 @@
       <nav class="main-nav" aria-label="Разделы">
         <button class="nav-link is-active" data-route="theory">Теория</button>
         <button class="nav-link" data-route="trainer">Тренажёр</button>
-        <button class="nav-link" data-route="coach">Практика</button>
+        <button class="nav-link" data-route="practice">Практика</button>
+        <button class="nav-link" data-route="coach">Коуч</button>
         <button class="nav-link" data-route="moderation" hidden>Модерация</button>
       </nav>
       <div class="header-meta">
@@ -135,15 +136,12 @@
         </div>
       </section>
 
-      <section class="view" id="view-coach" data-view="coach">
+      <section class="view" id="view-learning" data-view="learning">
         <div class="coach-shell">
           <aside class="chat-sidebar">
-            <div class="sidebar-head"><div><span class="eyebrow">03 / ОБУЧЕНИЕ</span><h2>Режим</h2></div></div>
-            <div class="coach-mode-switch vertical" role="group" aria-label="Режим обучения">
-              <button type="button" data-coach-mode="practice" class="is-active">Практика</button>
-              <button type="button" data-coach-mode="chat">Диалог с коучем</button>
-            </div>
-            <div class="session-tools is-hidden" id="session-tools">
+            <div class="sidebar-head"><div><span class="eyebrow" id="learning-section-label">03 / ПРАКТИКА</span><h2 id="learning-sidebar-title">Полный цикл</h2></div></div>
+            <p class="sidebar-route-copy" id="practice-route-context">Четыре шага превращают вопрос в проверяемое решение.</p>
+            <div class="session-tools is-hidden" id="session-tools" inert>
               <button class="secondary-button" id="new-session" type="button">＋ Новый диалог</button>
               <div class="session-list" id="session-list"></div>
             </div>
@@ -192,8 +190,8 @@
               </article>
             </div>
 
-            <div class="message-feed is-hidden" id="message-feed" aria-live="polite"></div>
-            <form class="composer is-hidden" id="composer"><textarea id="message-input" rows="1" maxlength="12000" placeholder="Опишите задачу…" aria-label="Сообщение"></textarea><div class="composer-footer"><span><kbd>Enter</kbd> отправить · <kbd>Shift</kbd> + <kbd>Enter</kbd> новая строка</span><button class="send-button" id="send-message" type="submit" aria-label="Отправить">↑</button></div></form>
+            <div class="message-feed is-hidden" id="message-feed" aria-live="polite" inert></div>
+            <form class="composer is-hidden" id="composer" inert><textarea id="message-input" rows="1" maxlength="12000" placeholder="Опишите задачу…" aria-label="Сообщение"></textarea><div class="composer-footer"><span><kbd>Enter</kbd> отправить · <kbd>Shift</kbd> + <kbd>Enter</kbd> новая строка</span><button class="send-button" id="send-message" type="submit" aria-label="Отправить">↑</button></div></form>
           </section>
         </div>
       </section>
