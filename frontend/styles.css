@@ -275,12 +275,13 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visib
 .answer-option:hover { background: white; transform: translateY(-1px); }
 .back-actions { display: flex; align-items: center; gap: 20px; }
 
-/* Coach */
-#view-coach { background: #e9e7dd; }
+/* Practice and coach */
+#view-learning { background: #e9e7dd; }
 .coach-shell { min-height: calc(100vh - 78px); display: grid; grid-template-columns: 310px 1fr; }
 .chat-sidebar { min-height: calc(100vh - 78px); padding: 28px 18px; display: flex; flex-direction: column; background: var(--ink); color: var(--paper); border-right: 1px solid var(--white-line); }
 .sidebar-head { display: flex; justify-content: space-between; align-items: center; padding: 0 8px 24px; }
 .sidebar-head h2 { margin: 7px 0 0; font-size: 28px; }
+.sidebar-route-copy { margin: 0 8px 24px; color: #b8bab1; font-size: 13px; line-height: 1.55; }
 .eyebrow { color: #888a82; }
 .icon-button { width: 40px; height: 40px; border-radius: 50%; background: var(--acid); color: var(--ink); font-size: 24px; }
 .icon-button:hover { transform: rotate(8deg); }
@@ -304,12 +305,6 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visib
 .chat-header { min-height: 90px; display: flex; justify-content: space-between; align-items: center; padding: 18px 34px; border-bottom: 1px solid var(--line); background: rgba(233,231,221,.92); backdrop-filter: blur(14px); }
 .chat-header h1 { margin: 5px 0 0; font-size: 26px; letter-spacing: -.03em; }
 .chat-title-block { display: flex; align-items: center; gap: 20px; }
-.coach-mode-switch { display: flex; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.35); }
-.coach-mode-switch button { padding: 7px 11px; border: 0; border-radius: 999px; background: transparent; cursor: pointer; font-size: 11px; font-weight: 750; }
-.coach-mode-switch button.is-active { background: var(--ink); color: var(--acid); }
-.coach-mode-switch.vertical { display: grid; border-color: var(--white-line); border-radius: 16px; background: rgba(255,255,255,.04); }
-.coach-mode-switch.vertical button { color: var(--paper); text-align: left; }
-.coach-mode-switch.vertical button.is-active { background: var(--acid); color: var(--ink); }
 .session-tools { margin-top: 18px; min-height: 0; display: grid; gap: 12px; }
 .session-tools > .secondary-button { color: var(--paper); border-color: var(--white-line); }
 .chat-actions { display: flex; align-items: center; gap: 10px; }
@@ -473,8 +468,9 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
   .shell { width: min(100% - 28px, 1240px); }
   .topbar { min-height: 66px; padding: 0 15px; }
   .brand-copy small { display: none; }
-  .main-nav { width: calc(100% - 28px); justify-content: center; }
-  .nav-link { flex: 1; padding-inline: 10px; }
+  .main-nav { width: calc(100% - 28px); justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
+  .main-nav::-webkit-scrollbar { display: none; }
+  .nav-link { flex: 0 0 auto; padding-inline: 12px; white-space: nowrap; }
   .view { min-height: calc(100vh - 66px); }
   .hero { min-height: 670px; padding-top: 50px; }
   .hero h1 { font-size: clamp(62px, 20vw, 102px); }
@@ -515,7 +511,6 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
   .chat-header h1 { font-size: 20px; }
   .chat-title-block { gap: 8px; }
   .chat-title-block h1 { display: none; }
-  .coach-mode-switch button { padding: 7px 9px; font-size: 10px; }
   .chat-actions { gap: 6px; }
   .model-picker-label { display: none; }
   .model-trigger { min-width: 190px; }

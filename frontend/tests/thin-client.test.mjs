@@ -147,6 +147,7 @@ test('model popover closes when keyboard focus leaves the picker', async () => {
 test('practice and coach are independent hash routes', async () => {
   const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+  const css = await fs.readFile(new URL('styles.css', frontend), 'utf8');
 
   assert.match(html, /data-route="practice">Практика<\/button>/);
   assert.match(html, /data-route="coach">Коуч<\/button>/);
@@ -155,4 +156,8 @@ test('practice and coach are independent hash routes', async () => {
   assert.match(app, /\['practice', 'coach'\]\.includes\(route\) \? 'learning' : route/);
   assert.match(app, /syncLearningRoute\(route\)/);
   assert.doesNotMatch(app, /coachMode|setCoachMode/);
+  assert.match(css, /#view-learning\s*\{/);
+  assert.match(css, /\.sidebar-route-copy\s*\{/);
+  assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.main-nav\s*\{[^}]*overflow-x:\s*auto;/);
+  assert.doesNotMatch(css, /\.coach-mode-switch/);
 });
