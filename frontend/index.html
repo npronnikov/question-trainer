@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#10110f">
-  <meta name="description" content="Теория, карточки и ACP-коуч по вопросам-взломщикам">
+  <meta name="description" content="Серверный тренажёр нестандартного мышления">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
@@ -19,12 +19,10 @@
       <p class="eyebrow">QUESTION / HACK</p>
       <h1 id="auth-title">Войдите в свою<br>траекторию обучения.</h1>
       <p class="auth-lead">Прогресс, практика и диалоги хранятся на сервере и доступны только вашему аккаунту.</p>
-
       <div class="auth-switch" role="tablist" aria-label="Способ входа">
         <button type="button" role="tab" aria-selected="true" data-auth-mode="login">Вход</button>
         <button type="button" role="tab" aria-selected="false" data-auth-mode="register">Регистрация</button>
       </div>
-
       <form class="auth-form" id="login-form">
         <label for="login-identity">Имя пользователя или email</label>
         <input id="login-identity" name="login" type="text" maxlength="254" autocomplete="username" required>
@@ -32,7 +30,6 @@
         <input id="login-password" name="password" type="password" maxlength="200" autocomplete="current-password" required>
         <button class="primary-button auth-submit" type="submit">Войти <span>→</span></button>
       </form>
-
       <form class="auth-form" id="register-form" hidden>
         <label for="register-username">Имя пользователя</label>
         <input id="register-username" name="username" type="text" minlength="3" maxlength="80" autocomplete="username" required>
@@ -42,233 +39,164 @@
         <input id="register-password" name="password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required>
         <button class="primary-button auth-submit" type="submit">Создать аккаунт <span>→</span></button>
       </form>
-
       <p class="auth-error" id="auth-error" role="alert" aria-live="assertive"></p>
     </section>
     <aside class="auth-promise" aria-label="Принцип тренажёра">
       <span>ВОПРОС → ОТВЕТ → РАССУЖДЕНИЕ → РЕШЕНИЕ</span>
-      <blockquote>«Сервер оценивает полноту хода мысли, соответствие категории и силу вопроса — интерфейс только помогает пройти путь.»</blockquote>
+      <blockquote>«Сервер оценивает полноту, попадание в категорию и силу вопроса. Интерфейс помогает пройти путь.»</blockquote>
     </aside>
   </main>
 
   <div id="app-shell" hidden>
-  <header class="topbar">
-    <a class="brand" href="#theory" data-route="theory" aria-label="На главную">
-      <span class="brand-mark">?</span>
-      <span class="brand-copy"><strong>QUESTION / HACK</strong><small>практика нестандартного мышления</small></span>
-    </a>
-    <nav class="main-nav" aria-label="Разделы">
-      <button class="nav-link is-active" data-route="theory">Теория</button>
-      <button class="nav-link" data-route="trainer">Тренажёр</button>
-      <button class="nav-link" data-route="coach">Обучение</button>
-    </nav>
-    <div class="header-meta">
-      <span class="backend-state"><span class="connection-dot" id="connection-dot"></span><span id="connection-label">проверяем сервер</span></span>
-      <span class="account-state"><strong id="current-user"></strong><button class="text-button" id="logout-button" type="button">Выйти</button></span>
-    </div>
-  </header>
-
-  <main>
-    <section class="view is-active" id="view-theory" data-view="theory">
-      <div class="hero shell">
-        <div class="hero-kicker">Не ищите ответ слишком рано</div>
-        <h1>Сначала <em>взломайте</em><br>сам вопрос.</h1>
-        <p class="hero-lead">Семь способов выйти из автопилота: перевернуть цель, изменить масштаб, позаимствовать чужую механику, заглянуть из будущего, сломать правило, сменить рамку или отрезать всё лишнее.</p>
-        <div class="hero-actions">
-          <button class="primary-button" data-route="trainer">Начать тренировку <span>↗</span></button>
-          <button class="text-button" data-scroll="theory-grid">Изучить техники ↓</button>
-        </div>
-        <div class="hero-stats" aria-label="Состав курса">
-          <div><strong>7</strong><span>базовых категорий</span></div>
-          <div><strong>56</strong><span>офлайн-ситуаций</span></div>
-          <div><strong>1</strong><span>ACP-коуч в чате</span></div>
-        </div>
-        <div class="orbit orbit-one" aria-hidden="true">ИНВЕРСИЯ</div>
-        <div class="orbit orbit-two" aria-hidden="true">10×</div>
+    <header class="topbar">
+      <a class="brand" href="#theory" data-route="theory" aria-label="На главную">
+        <span class="brand-mark">?</span>
+        <span class="brand-copy"><strong>QUESTION / HACK</strong><small>практика нестандартного мышления</small></span>
+      </a>
+      <nav class="main-nav" aria-label="Разделы">
+        <button class="nav-link is-active" data-route="theory">Теория</button>
+        <button class="nav-link" data-route="trainer">Тренажёр</button>
+        <button class="nav-link" data-route="coach">Практика</button>
+        <button class="nav-link" data-route="moderation" hidden>Модерация</button>
+      </nav>
+      <div class="header-meta">
+        <span class="backend-state"><span class="connection-dot" id="connection-dot"></span><span id="connection-label">проверяем сервер</span></span>
+        <span class="account-state"><strong id="current-user"></strong><button class="text-button" id="logout-button" type="button">Выйти</button></span>
       </div>
+    </header>
 
-      <section class="theory-intro shell">
-        <div class="section-number">01 / ТЕОРИЯ</div>
-        <div>
-          <h2>Семь разных движений мысли</h2>
-          <p>Категория определяется не темой вопроса, а тем, <strong>что именно он делает с исходной рамкой</strong>. Нажмите на карточку и разберите механизм, формулу и анти-паттерн.</p>
+    <main>
+      <section class="view is-active" id="view-theory" data-view="theory">
+        <div class="hero shell">
+          <div class="hero-kicker">Не ищите ответ слишком рано</div>
+          <h1>Сначала <em>взломайте</em><br>сам вопрос.</h1>
+          <p class="hero-lead">Семь способов выйти из автопилота. Теория, доказательства и границы техник загружаются из единой серверной программы.</p>
+          <div class="hero-actions">
+            <button class="primary-button" data-route="trainer">Начать тренировку <span>↗</span></button>
+            <button class="text-button" data-scroll="theory-grid">Изучить техники ↓</button>
+          </div>
+          <div class="hero-stats" aria-label="Состав курса">
+            <div><strong>7</strong><span>категорий</span></div>
+            <div><strong>98</strong><span>проверенных карточек</span></div>
+            <div><strong>4</strong><span>шага практики</span></div>
+          </div>
+          <div class="orbit orbit-one" aria-hidden="true">ИНВЕРСИЯ</div>
+          <div class="orbit orbit-two" aria-hidden="true">10×</div>
         </div>
+        <section class="theory-intro shell">
+          <div class="section-number">01 / ТЕОРИЯ</div>
+          <div><h2>Семь движений мысли</h2><p>Категория определяется не темой, а тем, <strong>какую операцию вопрос выполняет над исходной рамкой</strong>.</p></div>
+        </section>
+        <div class="theory-layout shell" id="theory-grid">
+          <div class="category-rail" id="category-rail" role="tablist" aria-label="Категории"></div>
+          <article class="theory-detail" id="theory-detail" aria-live="polite"><p>Загружаем программу…</p></article>
+        </div>
+        <section class="compare-section shell">
+          <div class="section-number">СЕРВЕРНАЯ ПРОГРАММА</div>
+          <h2>Определение, механизм, примеры и доказательства — в одном месте.</h2>
+          <p class="section-lead">Фронтенд не хранит копию курса: изменения программы сразу становятся доступны всем ученикам.</p>
+        </section>
       </section>
 
-      <div class="theory-layout shell" id="theory-grid">
-        <div class="category-rail" id="category-rail" role="tablist" aria-label="Категории"></div>
-        <article class="theory-detail" id="theory-detail" aria-live="polite"></article>
-      </div>
-
-      <section class="compare-section shell">
-        <div class="section-number">ШПАРГАЛКА</div>
-        <h2>Как не перепутать соседние техники</h2>
-        <div class="compare-grid">
-          <article><span>Инверсия</span><strong>Меняет направление цели</strong><p>«Как всё провалить?» — затем перевести причины в защиту.</p></article>
-          <article><span>Провокация</span><strong>Убирает правило</strong><p>«А почему мы вообще обязаны это делать?»</p></article>
-          <article><span>Гипербола</span><strong>Меняет параметр</strong><p>0 бюджета, 100× спроса, дедлайн завтра.</p></article>
-          <article><span>Упрощение</span><strong>Убирает элементы</strong><p>Оставить ядро ценности, а не просто сделать дешевле.</p></article>
-        </div>
-      </section>
-    </section>
-
-    <section class="view" id="view-trainer" data-view="trainer">
-      <div class="trainer-shell shell">
-        <header class="trainer-header">
-          <div>
-            <div class="section-number">02 / ОФЛАЙН-ТРЕНАЖЁР</div>
-            <h1>Определите движение,<br>а не тему вопроса.</h1>
-          </div>
-          <div class="scoreboard">
-            <div><span>очки</span><strong id="score-value">0</strong></div>
-            <div><span>серия</span><strong id="streak-value">0</strong></div>
-            <div><span>точность</span><strong id="accuracy-value">—</strong></div>
-          </div>
-        </header>
-
-        <div class="progress-track" aria-label="Прогресс">
-          <span id="progress-fill"></span>
-        </div>
-        <div class="trainer-meta">
-          <span id="card-counter">Карточка 1 из 56</span>
-          <div class="trainer-actions">
-            <label class="model-picker trainer-model-picker" for="trainer-model-select"><span>Модель</span><select id="trainer-model-select" aria-label="Модель генератора ситуаций" disabled><option>—</option></select></label>
-            <button class="secondary-button" id="generate-scenarios">+ 7 ситуаций</button>
-            <button id="reset-progress" class="text-button danger">Сбросить прогресс</button>
-          </div>
-        </div>
-
-        <div class="training-stage">
-          <div class="flip-card" id="flip-card">
-            <div class="flip-inner">
-              <article class="card-face card-front">
-                <div class="card-label"><span>СИТУАЦИЯ</span><small id="scenario-domain">ПРОДУКТ</small></div>
-                <p class="scenario-text" id="scenario-text"></p>
-                <blockquote id="scenario-question"></blockquote>
-                <div class="answer-grid" id="answer-grid"></div>
-                <p class="card-hint">Выберите основную категорию. После ответа карточка перевернётся.</p>
-              </article>
-              <article class="card-face card-back">
-                <div class="result-mark" id="result-mark">Верно</div>
-                <div class="answer-number" id="answer-number">01</div>
-                <h2 id="answer-title">Инверсия</h2>
-                <p class="answer-tagline" id="answer-tagline"></p>
-                <div class="answer-explanation" id="answer-explanation"></div>
-                <div class="back-actions">
-                  <button class="primary-button" id="next-card">Следующая карточка <span>→</span></button>
-                  <button class="text-button" id="open-theory">Открыть теорию</button>
-                </div>
-              </article>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="view" id="view-coach" data-view="coach">
-      <div class="coach-shell">
-        <aside class="chat-sidebar">
-          <div class="sidebar-head">
-            <div>
-              <span class="eyebrow">03 / ОБУЧЕНИЕ</span>
-              <h2>Диалоги</h2>
-            </div>
-            <button class="icon-button" id="new-session" title="Новый диалог" aria-label="Новый диалог">＋</button>
-          </div>
-          <div class="session-list" id="session-list"></div>
-          <div class="agent-card">
-            <div class="agent-card-head"><span class="connection-dot" id="agent-dot"></span><strong>ACP agent</strong></div>
-            <p id="agent-status">Проверяем backend…</p>
-            <code id="agent-command">—</code>
-          </div>
-        </aside>
-
-        <section class="chat-main">
-          <header class="chat-header">
-            <div class="chat-title-block">
-              <div class="coach-mode-switch" role="group" aria-label="Режим обучения">
-                <button class="is-active" type="button" data-coach-mode="chat">Диалог</button>
-                <button type="button" data-coach-mode="practice">Практика</button>
-              </div>
-              <h1 id="chat-title">Тренер вопросов</h1>
-            </div>
-            <div class="chat-actions">
-              <label class="model-picker" for="model-select"><span>Модель</span><select id="model-select" aria-label="Модель коуча" disabled><option>—</option></select></label>
-              <button class="secondary-button is-hidden" id="new-practice" type="button">Новая ситуация</button>
+      <section class="view" id="view-trainer" data-view="trainer">
+        <div class="trainer-shell shell">
+          <header class="trainer-header">
+            <div><div class="section-number">02 / АДАПТИВНЫЙ ТРЕНАЖЁР</div><h1>Определите движение,<br>а не тему вопроса.</h1></div>
+            <div class="scoreboard" aria-label="Серверный прогресс">
+              <div><span>освоение</span><strong id="mastery-value">0%</strong></div>
+              <div><span>ответов</span><strong id="attempts-value">0</strong></div>
+              <div><span>точность</span><strong id="accuracy-value">—</strong></div>
             </div>
           </header>
-
-          <div class="message-feed" id="message-feed" aria-live="polite">
-            <article class="welcome-panel" id="chat-welcome">
-              <div class="welcome-symbol">?</div>
-              <h2>Принесите реальную задачу.<br>Мы взломаем её рамку.</h2>
-              <p>Коуч выберет подходящие категории, предложит точные вопросы, покажет анти-паттерн и даст микро-эксперимент на 24–48 часов.</p>
-              <div class="suggestion-grid">
-                <button data-prompt="Команда месяцами улучшает онбординг, но активация не растёт. Помоги выбрать вопросы-взломщики.">Онбординг не растёт</button>
-                <button data-prompt="Мы хотим найти риски перед запуском новой B2B-платформы. Проведи меня через инверсию и premortem.">Найти риски запуска</button>
-                <button data-prompt="Продукт перегружен функциями. Как с помощью упрощения и первых принципов найти ядро ценности?">Упростить продукт</button>
-                <button data-prompt="Нужна прорывная идея для корпоративного обучения. Используй кросс-дисциплину и гиперболу.">Найти прорывную идею</button>
-              </div>
-            </article>
-          </div>
-
-          <div class="practice-panel is-hidden" id="practice-panel" aria-live="polite">
-            <div class="practice-empty" id="practice-empty">
-              <span class="practice-number">01</span>
-              <h2>Сформулируйте вопрос.<br>Получите из него идею.</h2>
-              <p>Коуч даст одну точную правку. Улучшайте попытку, пока упражнение не будет зачтено.</p>
-              <button class="primary-button" id="start-practice" type="button">Получить ситуацию <span>→</span></button>
+          <div class="progress-track" aria-label="Среднее освоение"><span id="progress-fill"></span></div>
+          <div class="trainer-meta">
+            <span id="card-counter">Персональная выдача сервера</span>
+            <div class="trainer-actions">
+              <label for="difficulty-select">Уровень
+                <select id="difficulty-select"><option value="">Адаптивно</option><option value="L1">L1</option><option value="L2">L2</option><option value="L3">L3</option></select>
+              </label>
+              <button class="secondary-button" id="refresh-progress" type="button">Обновить прогресс</button>
             </div>
-            <article class="practice-workspace is-hidden" id="practice-workspace">
-              <div class="practice-progress" aria-label="Этапы практики">
-                <span class="is-active">Ситуация</span><span>Вопрос</span><span>Идея</span><span>Улучшение</span><span>Зачёт</span>
-              </div>
-              <div class="practice-situation">
-                <span class="eyebrow" id="practice-domain">СИТУАЦИЯ</span>
-                <h2 id="practice-situation"></h2>
-              </div>
-              <form class="practice-form" id="practice-form">
-                <label><span>Ваш вопрос-взломщик</span><textarea id="practice-question" rows="3" maxlength="1800" required placeholder="Какой вопрос изменит исходную рамку?"></textarea></label>
-                <label><span>Идея из этого вопроса</span><textarea id="practice-idea" rows="4" maxlength="3000" required placeholder="Какая конкретная идея возникла благодаря вопросу?"></textarea></label>
-                <div class="practice-submit-row">
-                  <small id="practice-attempt">Попытка 1</small>
-                  <button class="primary-button" id="submit-practice" type="submit">Проверить <span>→</span></button>
-                </div>
-              </form>
-              <article class="practice-feedback is-hidden" id="practice-feedback"></article>
-            </article>
           </div>
+          <p class="trainer-recommendation" id="progress-recommendation" role="status">Загружаем рекомендацию…</p>
+          <div class="training-stage">
+            <article class="trainer-card" id="trainer-card" aria-busy="true">
+              <div class="card-label"><span>СИТУАЦИЯ</span><small id="scenario-domain">—</small></div>
+              <p class="scenario-text" id="scenario-text">Загружаем карточку…</p>
+              <blockquote id="scenario-question"></blockquote>
+              <fieldset class="answer-fieldset" id="answer-fieldset">
+                <legend>Основная категория</legend>
+                <div class="answer-grid" id="answer-grid"></div>
+              </fieldset>
+              <label class="rationale-field" for="trainer-rationale"><span>Почему это эта категория?</span><textarea id="trainer-rationale" rows="3" minlength="20" maxlength="2000" placeholder="Опишите операцию, которую вопрос совершает над рамкой" required></textarea></label>
+              <div class="trainer-submit"><span id="trainer-error" role="alert"></span><button class="primary-button" id="submit-trainer" type="button">Проверить на сервере <span>→</span></button></div>
+            </article>
+            <article class="trainer-feedback is-hidden" id="trainer-feedback" role="status" aria-live="polite" tabindex="-1"></article>
+          </div>
+        </div>
+      </section>
 
-          <form class="composer" id="composer">
-            <textarea id="message-input" rows="1" maxlength="12000" placeholder="Опишите задачу, решение или тупик…" aria-label="Сообщение"></textarea>
-            <div class="composer-footer">
-              <span><kbd>Enter</kbd> отправить · <kbd>Shift</kbd> + <kbd>Enter</kbd> новая строка</span>
-              <button class="send-button" id="send-message" type="submit" aria-label="Отправить">↑</button>
+      <section class="view" id="view-coach" data-view="coach">
+        <div class="coach-shell">
+          <aside class="chat-sidebar">
+            <div class="sidebar-head"><div><span class="eyebrow">03 / ОБУЧЕНИЕ</span><h2>Режим</h2></div></div>
+            <div class="coach-mode-switch vertical" role="group" aria-label="Режим обучения">
+              <button type="button" data-coach-mode="practice" class="is-active">Практика</button>
+              <button type="button" data-coach-mode="chat">Диалог с коучем</button>
             </div>
-          </form>
-        </section>
-      </div>
-    </section>
-  </main>
+            <div class="session-tools is-hidden" id="session-tools">
+              <button class="secondary-button" id="new-session" type="button">＋ Новый диалог</button>
+              <div class="session-list" id="session-list"></div>
+            </div>
+            <div class="agent-card"><div class="agent-card-head"><span class="connection-dot" id="agent-dot"></span><strong>ACP agent</strong></div><p id="agent-status">Проверяем backend…</p><code id="agent-command">—</code></div>
+          </aside>
+          <section class="chat-main">
+            <header class="chat-header">
+              <div class="chat-title-block"><p class="eyebrow">ВОПРОС → ОТВЕТ → РАССУЖДЕНИЕ → РЕШЕНИЕ</p><h1 id="chat-title">Практика полного цикла</h1></div>
+              <div class="chat-actions"><label class="model-picker" for="model-select"><span>Модель</span><select id="model-select" disabled><option>—</option></select></label><button class="secondary-button" id="new-practice" type="button">Новая ситуация</button></div>
+            </header>
 
-  <dialog class="confirm-dialog" id="delete-session-dialog" aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description">
-    <form method="dialog" id="delete-session-form">
-      <span class="confirm-dialog-mark" aria-hidden="true">×</span>
-      <p class="eyebrow">УДАЛЕНИЕ ДИАЛОГА</p>
-      <h2 id="delete-dialog-title">Удалить диалог?</h2>
-      <p id="delete-dialog-description">Диалог <strong id="delete-dialog-name"></strong> и все его сообщения будут удалены без возможности восстановления.</p>
-      <div class="confirm-dialog-actions">
-        <button class="secondary-button" id="delete-session-cancel" type="button">Отмена</button>
-        <button class="danger-button" id="delete-session-confirm" type="submit">Удалить</button>
-      </div>
-    </form>
-  </dialog>
+            <div class="practice-panel" id="practice-panel">
+              <div class="practice-empty" id="practice-empty">
+                <span class="practice-number">04</span><h2>Пройдите полный<br>ход мысли.</h2>
+                <p>Сервер проверит, заполнены ли все шаги, попал ли вопрос в заданную категорию и насколько он силён внутри неё.</p>
+                <button class="primary-button" id="start-practice" type="button">Получить ситуацию <span>→</span></button>
+              </div>
+              <article class="practice-workspace is-hidden" id="practice-workspace">
+                <div class="practice-progress" aria-label="Этапы практики"><span>Вопрос</span><span>Ответ</span><span>Рассуждение</span><span>Решение</span></div>
+                <div class="practice-situation"><span class="eyebrow" id="practice-domain">СИТУАЦИЯ</span><h2 id="practice-situation"></h2><p id="practice-guidance"></p></div>
+                <form class="practice-form" id="practice-form" novalidate>
+                  <label for="practice-question"><span>1. Вопрос</span></label><textarea id="practice-question" rows="3" maxlength="1800" required placeholder="Какой вопрос изменит исходную рамку?"></textarea>
+                  <label for="practice-answer"><span>2. Ответ</span></label><textarea id="practice-answer" rows="3" maxlength="3000" required placeholder="Дайте прямой ответ на свой вопрос"></textarea>
+                  <label for="practice-reasoning"><span>3. Рассуждение</span></label><textarea id="practice-reasoning" rows="4" maxlength="5000" required placeholder="Что следует из вопроса и ответа? Покажите цепочку вывода"></textarea>
+                  <label for="practice-solution"><span>4. Решение</span></label><textarea id="practice-solution" rows="3" maxlength="3000" required placeholder="Какое конкретное решение вы предлагаете?"></textarea>
+                  <p class="form-error" id="practice-error" role="alert"></p>
+                  <div class="practice-submit-row"><small id="practice-attempt">Попытка 1</small><button class="primary-button" id="submit-practice" type="submit">Отправить на оценку <span>→</span></button></div>
+                </form>
+                <article class="practice-feedback is-hidden" id="practice-feedback" role="status" aria-live="polite" tabindex="-1"></article>
+              </article>
+            </div>
 
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+            <div class="message-feed is-hidden" id="message-feed" aria-live="polite"></div>
+            <form class="composer is-hidden" id="composer"><textarea id="message-input" rows="1" maxlength="12000" placeholder="Опишите задачу…" aria-label="Сообщение"></textarea><div class="composer-footer"><span><kbd>Enter</kbd> отправить · <kbd>Shift</kbd> + <kbd>Enter</kbd> новая строка</span><button class="send-button" id="send-message" type="submit" aria-label="Отправить">↑</button></div></form>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="view-moderation" data-view="moderation">
+        <div class="moderation-shell shell">
+          <header class="moderation-header"><div><div class="section-number">04 / КОНТУР КАЧЕСТВА</div><h1>Ни один кейс<br>не проходит напрямую.</h1></div><div class="moderation-generate"><label for="moderation-count">Количество<input id="moderation-count" type="number" min="1" max="20" value="7"></label><button class="primary-button" id="generate-candidates" type="button">В очередь <span>→</span></button></div></header>
+          <div class="moderation-toolbar" role="group" aria-label="Фильтр очереди"><button class="is-active" data-moderation-status="PENDING_REVIEW">На проверке</button><button data-moderation-status="AUTO_REJECTED">Автоотказ</button><button data-moderation-status="REJECTED">Отклонено</button><button data-moderation-status="PUBLISHED">Опубликовано</button></div>
+          <p class="moderation-status" id="moderation-status" role="status"></p>
+          <div class="moderation-layout"><div class="candidate-list" id="candidate-list"></div><article class="candidate-detail" id="candidate-detail"><p>Выберите кандидат в очереди.</p></article></div>
+        </div>
+      </section>
+    </main>
+
+    <dialog class="confirm-dialog" id="delete-session-dialog"><form method="dialog" id="delete-session-form"><p class="eyebrow">УДАЛЕНИЕ ДИАЛОГА</p><h2>Удалить диалог?</h2><p>Диалог <strong id="delete-dialog-name"></strong> будет удалён.</p><div class="confirm-dialog-actions"><button class="secondary-button" id="delete-session-cancel" type="button">Отмена</button><button class="danger-button" id="delete-session-confirm" type="submit">Удалить</button></div></form></dialog>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
   </div>
 
-  <script src="data/theory.js"></script>
-  <script src="data/scenarios.js"></script>
   <script src="api.js"></script>
   <script src="auth.js"></script>
   <script src="app.js"></script>

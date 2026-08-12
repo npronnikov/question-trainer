@@ -4,6 +4,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -41,5 +44,17 @@ class SecurityConfigTest {
                                 {"username":"user-one","password":"long-password-123"}
                                 """))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void legacyGenerationAndTwoStepPracticeRoutesAreGone() throws Exception {
+        mvc.perform(post("/api/scenarios/generate")
+                        .with(user("legacy-user")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"count\":1}"))
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/api/practice/review")
+                        .with(user("legacy-user")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isNotFound());
     }
 }

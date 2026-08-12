@@ -12,6 +12,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -35,6 +36,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     ProblemDetail badRequest(IllegalArgumentException error) {
         return problem(HttpStatus.BAD_REQUEST.value(), "Некорректный запрос: " + error.getMessage());
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    ProblemDetail notFound(NoResourceFoundException error) {
+        return problem(HttpStatus.NOT_FOUND.value(), "Маршрут не найден");
     }
 
     @ExceptionHandler(Exception.class)

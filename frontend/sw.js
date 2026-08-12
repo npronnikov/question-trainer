@@ -1,7 +1,7 @@
-const CACHE = 'question-hacker-v7';
+const CACHE = 'question-hacker-v8';
 const OFFLINE = [
   './', './index.html', './styles.css', './api.js', './auth.js', './app.js', './manifest.webmanifest',
-  './assets/icon.svg', './data/theory.js', './data/theory-expansion.json', './data/scenarios.js'
+  './assets/icon.svg'
 ];
 
 self.addEventListener('install', event => {

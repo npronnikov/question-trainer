@@ -1,53 +1,40 @@
 (() => {
   'use strict';
 
-  const categories = window.QH_CATEGORIES || [];
-  const scenarios = window.QH_SCENARIOS || [];
-  const categoryMap = new Map(categories.map(item => [item.id, item]));
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+  const TERMINAL_ATTEMPT_STATUSES = new Set(['PASSED', 'NEEDS_REVISION', 'UNVERIFIED']);
+  const FIELD_LABELS = { question: 'Вопрос', answer: 'Ответ', reasoning: 'Рассуждение', solution: 'Решение' };
+  const STATUS_LABELS = {
+    PENDING_REVIEW: 'На проверке', AUTO_REJECTED: 'Автоотказ',
+    REJECTED: 'Отклонено', PUBLISHED: 'Опубликовано'
+  };
+  const REJECTION_LABELS = {
+    WEAK_LEARNING_VALUE: 'Слабая учебная ценность', WRONG_CATEGORY: 'Неверная категория',
+    DUPLICATE: 'Дубликат', UNSAFE_CONTENT: 'Небезопасный контент',
+    POOR_WRITING: 'Слабая формулировка', OTHER: 'Другая причина'
+  };
 
   let booted = false;
-  let currentTheoryId = categories[0]?.id;
-  let trainerCard = null;
-  let trainerOptions = [];
-  let trainerAnswered = false;
-  let generatedScenarios = [];
-  let theoryExpansion = null;
-  let theoryExpansionPromise = null;
-  let chatInitialized = false;
-  let currentSessionId = null;
-  let pendingDeleteSession = null;
-  let sending = false;
-  let activeEventSource = null;
+  let currentUser = null;
+  let categories = [];
+  let currentTheoryCode = null;
+  let currentTheory = null;
+  let trainerIssuance = null;
+  let trainerSelection = null;
+  let trainerFeedback = null;
   let selectedModel = null;
-  let coachMode = 'chat';
-  let practiceState = { scenario: null, attempt: 1, previousFeedback: '', passed: false };
-
-  const progress = loadProgress();
-
-  function loadProgress() {
-    const fallback = { score: 0, streak: 0, answered: 0, correct: 0, seen: [] };
-    try {
-      const saved = JSON.parse(localStorage.getItem('qh-progress'));
-      return { ...fallback, ...(saved || {}), seen: Array.isArray(saved?.seen) ? saved.seen : [] };
-    } catch {
-      return fallback;
-    }
-  }
-
-  function saveProgress() {
-    try { localStorage.setItem('qh-progress', JSON.stringify(progress)); } catch { /* storage may be disabled */ }
-  }
-
-  function shuffle(values) {
-    const copy = [...values];
-    for (let i = copy.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [copy[i], copy[j]] = [copy[j], copy[i]];
-    }
-    return copy;
-  }
+  let coachMode = 'practice';
+  let currentSessionId = null;
+  let sending = false;
+  let activeStream = null;
+  let practiceAssignment = null;
+  let practiceAttempt = null;
+  let attemptPoll = null;
+  let moderationStatus = 'PENDING_REVIEW';
+  let moderationRows = [];
+  let selectedCandidate = null;
+  let pendingDeleteSession = null;
 
   function escapeHtml(value = '') {
     return String(value).replace(/[&<>'"]/g, char => ({
@@ -55,14 +42,32 @@
     })[char]);
   }
 
-  function setRoute(route, pushHash = true) {
-    const safeRoute = ['theory', 'trainer', 'coach'].includes(route) ? route : 'theory';
-    $$('.view').forEach(view => view.classList.toggle('is-active', view.dataset.view === safeRoute));
-    $$('.nav-link').forEach(link => link.classList.toggle('is-active', link.dataset.route === safeRoute));
-    if (pushHash && location.hash !== `#${safeRoute}`) history.pushState(null, '', `#${safeRoute}`);
+  async function api(path, options = {}) {
+    return window.QH_API.request(`/api${path}`, options);
+  }
+
+  function idempotencyKey(prefix) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+
+  function setBusy(element, busy, label) {
+    if (!element) return;
+    element.disabled = busy;
+    element.setAttribute('aria-busy', String(busy));
+    if (label) element.textContent = label;
+  }
+
+  function setRoute(rawRoute, pushHash = true) {
+    const admin = currentUser?.roles?.includes('ADMIN');
+    const allowed = admin ? ['theory', 'trainer', 'coach', 'moderation'] : ['theory', 'trainer', 'coach'];
+    const route = allowed.includes(rawRoute) ? rawRoute : 'theory';
+    $$('.view').forEach(view => view.classList.toggle('is-active', view.dataset.view === route));
+    $$('.nav-link').forEach(link => link.classList.toggle('is-active', link.dataset.route === route));
+    if (pushHash && location.hash !== `#${route}`) history.pushState(null, '', `#${route}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    if (safeRoute === 'trainer' && !trainerCard) nextTrainerCard();
-    if (safeRoute === 'coach') initChat();
+    if (route === 'trainer' && !trainerIssuance) loadTrainerCard();
+    if (route === 'coach' && coachMode === 'chat') initChat();
+    if (route === 'moderation' && admin) loadModeration();
   }
 
   function bindNavigation() {
@@ -74,245 +79,178 @@
     window.addEventListener('popstate', () => setRoute(location.hash.slice(1), false));
   }
 
+  async function loadCurriculum() {
+    try {
+      categories = await api('/curriculum/categories');
+      currentTheoryCode ||= categories[0]?.code;
+      renderTheoryRail();
+      if (currentTheoryCode) await loadTheoryDetail(currentTheoryCode);
+    } catch (error) {
+      $('#theory-detail').innerHTML = errorPanel('Программа недоступна', error.message);
+    }
+  }
+
   function renderTheoryRail() {
     const rail = $('#category-rail');
     rail.innerHTML = categories.map(category => `
-      <button class="category-tab ${category.id === currentTheoryId ? 'is-active' : ''}" role="tab"
-              aria-selected="${category.id === currentTheoryId}" data-category="${category.id}">
-        <span class="num">${category.number}</span>
-        <strong>${escapeHtml(category.name)}</strong>
-        <span class="arrow">↗</span>
+      <button class="category-tab ${category.code === currentTheoryCode ? 'is-active' : ''}" role="tab"
+              aria-selected="${category.code === currentTheoryCode}" data-category="${escapeHtml(category.code)}">
+        <span class="num">${escapeHtml(category.number)}</span><strong>${escapeHtml(category.name)}</strong><span class="arrow">↗</span>
       </button>`).join('');
-    $$('.category-tab', rail).forEach(button => button.addEventListener('click', () => {
-      currentTheoryId = button.dataset.category;
+    $$('.category-tab', rail).forEach(button => button.addEventListener('click', async () => {
+      currentTheoryCode = button.dataset.category;
       renderTheoryRail();
-      renderTheoryDetail();
+      await loadTheoryDetail(currentTheoryCode);
     }));
   }
 
-  function renderTheoryDetail() {
-    const category = categoryMap.get(currentTheoryId) || categories[0];
-    if (!category) return;
-    $('#theory-detail').innerHTML = `
-      <div class="detail-topline">
-        <span class="detail-number">${category.number}</span>
-        <span class="detail-signal">${escapeHtml(category.when)}</span>
-      </div>
-      <h2>${escapeHtml(category.name)}</h2>
-      <h3 class="nickname">«${escapeHtml(category.nickname)}»</h3>
-      <p class="detail-definition">${escapeHtml(category.definition)}</p>
-      <div class="detail-columns">
-        <div class="detail-box"><h4>Как работает</h4><p>${escapeHtml(category.mechanism)}</p></div>
-        <div class="detail-box"><h4>Формула</h4><ol class="formula-list">${category.formula.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ol></div>
-      </div>
-      <div class="example-table">
-        ${category.examples.map(([label, question]) => `<div class="example-row"><span>${escapeHtml(label)}</span><strong>«${escapeHtml(question)}»</strong></div>`).join('')}
-      </div>
-      <div class="warning-box"><b>!</b><p><strong>Анти-паттерн.</strong> ${escapeHtml(category.mistake)}</p></div>
-      <div class="cue-line">${escapeHtml(category.cue)}</div>
-      <div class="expansion-entry">
-        <button class="secondary-button" id="open-expansion" type="button">Исследование, кейсы и источники ↓</button>
-        <span>3 доказательных кейса · проверяемые источники</span>
-      </div>
-      <section class="theory-expansion is-hidden" id="theory-expansion"></section>`;
-    $('#open-expansion')?.addEventListener('click', () => showTheoryExpansion(category.id));
-  }
-
-  async function loadTheoryExpansion() {
-    if (theoryExpansion) return theoryExpansion;
-    if (!theoryExpansionPromise) {
-      theoryExpansionPromise = fetch('data/theory-expansion.json')
-        .then(response => {
-          if (!response.ok) throw new Error(`Не удалось загрузить исследование: ${response.status}`);
-          return response.json();
-        })
-        .then(data => {
-          theoryExpansion = data;
-          return data;
-        });
+  async function loadTheoryDetail(code) {
+    const panel = $('#theory-detail');
+    panel.setAttribute('aria-busy', 'true');
+    try {
+      currentTheory = await api(`/curriculum/categories/${encodeURIComponent(code)}`);
+      renderTheoryDetail(currentTheory);
+    } catch (error) {
+      panel.innerHTML = errorPanel('Глава недоступна', error.message);
+    } finally {
+      panel.setAttribute('aria-busy', 'false');
     }
-    return theoryExpansionPromise;
   }
 
-  async function showTheoryExpansion(categoryId) {
-    const panel = $('#theory-expansion');
-    const button = $('#open-expansion');
-    if (!panel || !button) return;
-    if (!panel.classList.contains('is-hidden')) {
-      panel.classList.add('is-hidden');
-      button.textContent = 'Исследование, кейсы и источники ↓';
+  function renderTheoryDetail(category) {
+    const evidence = category.sections || [];
+    $('#theory-detail').innerHTML = `
+      <div class="detail-topline"><span class="detail-number">${escapeHtml(category.number)}</span><span class="detail-signal">${escapeHtml(category.when)}</span></div>
+      <h2>${escapeHtml(category.name)}</h2><h3 class="nickname">«${escapeHtml(category.nickname)}»</h3>
+      <p class="detail-definition">${escapeHtml(category.definition)}</p>
+      <div class="detail-columns"><div class="detail-box"><h4>Операция</h4><p>${escapeHtml(category.operation)}</p></div><div class="detail-box"><h4>Как работает</h4><p>${escapeHtml(category.mechanism)}</p></div></div>
+      <div class="detail-box theory-formula"><h4>Формула</h4><ol class="formula-list">${category.formula.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ol></div>
+      <div class="example-table">${category.examples.map(item => `<div class="example-row"><span>${escapeHtml(item[0])}</span><strong>«${escapeHtml(item[1])}»</strong></div>`).join('')}</div>
+      <div class="warning-box"><b>!</b><p><strong>Анти-паттерн.</strong> ${escapeHtml(category.mistake)}</p></div>
+      <div class="cue-line"><strong>Контрольный сигнал:</strong> ${escapeHtml(category.cue)}</div>
+      <section class="theory-evidence"><div class="expansion-head"><span>ДОКАЗАТЕЛЬНЫЙ СЛОЙ</span><strong>${evidence.length} материалов</strong></div>
+        ${evidence.map(section => `<article class="evidence-card"><div><span>${escapeHtml(section.evidenceGrade || '—')}</span><h4>${escapeHtml(section.title)}</h4></div><p>${escapeHtml(section.content)}</p>${section.source ? `<a href="${escapeHtml(section.source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(section.source.title)} ↗</a>` : ''}</article>`).join('')}
+      </section>
+      ${category.contrasts?.length ? `<section class="contrast-list"><h3>Не перепутать</h3>${category.contrasts.map(item => `<p><strong>${escapeHtml(item.otherName)}:</strong> ${escapeHtml(item.text)}</p>`).join('')}</section>` : ''}`;
+  }
+
+  async function loadTrainerCard() {
+    const card = $('#trainer-card');
+    const difficulty = $('#difficulty-select').value;
+    card.setAttribute('aria-busy', 'true');
+    $('#trainer-error').textContent = '';
+    $('#trainer-feedback').classList.add('is-hidden');
+    trainerFeedback = null;
+    trainerSelection = null;
+    try {
+      const suffix = difficulty ? `?difficulty=${encodeURIComponent(difficulty)}` : '';
+      trainerIssuance = await api(`/trainer/next${suffix}`);
+      renderTrainerCard(trainerIssuance.card);
+    } catch (error) {
+      trainerIssuance = null;
+      $('#scenario-text').textContent = error.message;
+      $('#answer-grid').innerHTML = '';
+    } finally {
+      card.setAttribute('aria-busy', 'false');
+    }
+  }
+
+  function renderTrainerCard(card) {
+    $('#scenario-domain').textContent = `${card.domain} · ${card.difficulty}`;
+    $('#scenario-text').textContent = card.situation;
+    $('#scenario-question').textContent = card.question;
+    $('#trainer-rationale').value = '';
+    $('#answer-grid').innerHTML = card.options.map(option => `
+      <button class="answer-option" type="button" data-category="${escapeHtml(option.code)}" aria-pressed="false">${escapeHtml(option.name)}</button>`).join('');
+    $$('.answer-option', $('#answer-grid')).forEach(button => button.addEventListener('click', () => {
+      trainerSelection = button.dataset.category;
+      $$('.answer-option', $('#answer-grid')).forEach(item => {
+        const active = item === button;
+        item.classList.toggle('is-selected', active);
+        item.setAttribute('aria-pressed', String(active));
+      });
+      $('#trainer-error').textContent = '';
+    }));
+    $('#answer-fieldset').disabled = false;
+    $('#trainer-rationale').disabled = false;
+    $('#submit-trainer').disabled = false;
+    $('#card-counter').textContent = `Срок ответа: ${formatTime(trainerIssuance.expiresAt)}`;
+  }
+
+  async function submitTrainer() {
+    if (!trainerIssuance) return;
+    const rationale = $('#trainer-rationale').value.trim();
+    if (!trainerSelection) {
+      $('#trainer-error').textContent = 'Выберите категорию.';
       return;
     }
-
-    panel.classList.remove('is-hidden');
-    panel.innerHTML = '<p class="expansion-loading">Загружаем исследование…</p>';
-    button.textContent = 'Скрыть расширенную теорию ↑';
+    if (rationale.length < 20) {
+      $('#trainer-error').textContent = 'Объясните выбор хотя бы в 20 символах.';
+      $('#trainer-rationale').focus();
+      return;
+    }
+    const button = $('#submit-trainer');
+    setBusy(button, true, 'Сверяем…');
     try {
-      const data = await loadTheoryExpansion();
-      const expanded = data.categories.find(item => item.id === categoryId);
-      if (!expanded) throw new Error('Для этой категории исследование не найдено');
-      renderTheoryExpansion(panel, expanded, data.sources || []);
+      trainerFeedback = await api('/trainer/attempts', {
+        method: 'POST', body: JSON.stringify({ issuanceId: trainerIssuance.issuanceId, selectedCategory: trainerSelection, rationale })
+      });
+      renderTrainerFeedback(trainerFeedback);
+      $('#answer-fieldset').disabled = true;
+      $('#trainer-rationale').disabled = true;
+      await refreshProgressView();
     } catch (error) {
-      panel.innerHTML = `<p class="expansion-error">${escapeHtml(error.message)}</p>`;
+      $('#trainer-error').textContent = error.message;
+      setBusy(button, false, 'Проверить на сервере →');
     }
   }
 
-  function renderTheoryExpansion(panel, category, sources) {
-    const sourceMap = new Map(sources.map(source => [source.id, source]));
-    const usedSourceIds = new Set();
-    category.origins.forEach(item => item.sourceIds.forEach(id => usedSourceIds.add(id)));
-    category.cases.forEach(item => item.sourceIds.forEach(id => usedSourceIds.add(id)));
-    const usedSources = [...usedSourceIds].map(id => sourceMap.get(id)).filter(Boolean);
-    const sourceLinks = ids => ids.map(id => sourceMap.get(id)).filter(Boolean).map(source =>
-      `<a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.title)}</a>`
-    ).join(' · ');
-
+  function renderTrainerFeedback(value) {
+    const category = categories.find(item => item.code === value.correctCategory);
+    const panel = $('#trainer-feedback');
+    panel.classList.remove('is-hidden');
+    panel.classList.toggle('passed', value.correct);
     panel.innerHTML = `
-      <div class="expansion-head"><span>УГЛУБЛЁННЫЙ СЛОЙ</span><strong>${category.cases.length} кейса · ${usedSources.length} источников</strong></div>
-      <p class="expansion-overview">${escapeHtml(category.overview)}</p>
-
-      <div class="expansion-grid">
-        <section><h4>Протокол применения</h4><ol>${category.protocol.map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ol></section>
-        <section><h4>Вопросы-шаблоны</h4><ul>${category.questionTemplates.map(item => `<li><span>${escapeHtml(item.domain)}</span>${escapeHtml(item.question)}</li>`).join('')}</ul></section>
-      </div>
-
-      <h4 class="expansion-title">Люди и компании</h4>
-      <div class="case-list">
-        ${category.cases.map((item, index) => `
-          <details class="case-card" ${index === 0 ? 'open' : ''}>
-            <summary><span>${String(index + 1).padStart(2, '0')}</span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.actor)} · ${escapeHtml(item.period)}</small></summary>
-            <div class="case-content">
-              <dl>
-                <div><dt>Исходная рамка</dt><dd>${escapeHtml(item.originalFrame)}</dd></div>
-                <div><dt>Сдвиг рамки</dt><dd>${escapeHtml(item.frameShift)}</dd></div>
-                <div><dt>Действие</dt><dd>${escapeHtml(item.action)}</dd></div>
-                <div><dt>Результат</dt><dd>${escapeHtml(item.outcome)}</dd></div>
-                <div><dt>Почему это техника</dt><dd>${escapeHtml(item.whyItFits)}</dd></div>
-                <div><dt>Ограничения</dt><dd>${escapeHtml(item.limitations)}</dd></div>
-              </dl>
-              <p class="case-classification">${item.classification === 'explicit' ? 'Метод явно описан участником' : 'Ретроспективная интерпретация исследования'}</p>
-              <p class="case-sources">${sourceLinks(item.sourceIds)}</p>
-            </div>
-          </details>`).join('')}
-      </div>
-
-      <div class="exercise-pair">
-        <section><span>15 МИНУТ</span><h4>Быстрое упражнение</h4><p>${escapeHtml(category.quickExercise)}</p></section>
-        <section><span>24–48 ЧАСОВ</span><h4>Полевой эксперимент</h4><p>${escapeHtml(category.experiment)}</p></section>
-      </div>
-
-      <details class="source-register">
-        <summary>Источники этой главы (${usedSources.length})</summary>
-        <ol>${usedSources.map(source => `<li><a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.title)}</a><span>${escapeHtml(source.supports)}</span></li>`).join('')}</ol>
-      </details>`;
+      <div class="feedback-verdict">${value.correct ? 'Верно' : 'Нужно различить'} · ${escapeHtml(category?.name || value.correctCategory)}</div>
+      <div class="feedback-score">${Math.round(value.mastery.score)}<small>/ 100</small></div>
+      <h3>${value.correct ? 'Операция распознана.' : 'Категория определяется операцией вопроса.'}</h3>
+      <p>${escapeHtml(value.operationExplanation)}</p>
+      <div class="feedback-next"><strong>Контраст</strong><span>${escapeHtml(value.contrast)}</span></div>
+      <div class="feedback-next"><strong>Следующий шаг</strong><span>${escapeHtml(value.nextStep)}</span></div>
+      <div class="back-actions"><button class="primary-button" id="next-card" type="button">Следующая карточка <span>→</span></button><button class="text-button" id="open-theory" type="button">Открыть теорию</button></div>`;
+    $('#next-card').addEventListener('click', loadTrainerCard);
+    $('#open-theory').addEventListener('click', () => {
+      currentTheoryCode = value.correctCategory;
+      renderTheoryRail();
+      loadTheoryDetail(currentTheoryCode);
+      setRoute('theory');
+    });
+    panel.focus({ preventScroll: true });
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  function allScenarios() {
-    return [...scenarios, ...generatedScenarios];
-  }
-
-  function nextTrainerCard() {
-    const pool = allScenarios();
-    let available = pool.filter(item => !progress.seen.includes(item.id));
-    if (!available.length) {
-      progress.seen = [];
-      available = pool;
-      saveProgress();
-      showToast('Круг завершён — карточки перемешаны заново');
+  async function refreshProgressView() {
+    try {
+      const progress = await api('/progress');
+      const attempted = progress.categories.filter(item => item.attempts > 0);
+      const attempts = progress.categories.reduce((sum, item) => sum + item.attempts, 0);
+      const correct = progress.categories.reduce((sum, item) => sum + item.correctAnswers, 0);
+      const mastery = progress.categories.length ? progress.categories.reduce((sum, item) => sum + item.score, 0) / progress.categories.length : 0;
+      $('#mastery-value').textContent = `${Math.round(mastery)}%`;
+      $('#attempts-value').textContent = String(attempts);
+      $('#accuracy-value').textContent = attempts ? `${Math.round(correct * 100 / attempts)}%` : '—';
+      $('#progress-fill').style.width = `${Math.max(0, Math.min(100, mastery))}%`;
+      $('#progress-recommendation').textContent = progress.recommendation;
+      $('#progress-recommendation').dataset.attempted = String(attempted.length);
+    } catch (error) {
+      $('#progress-recommendation').textContent = error.message;
     }
-    trainerCard = shuffle(available)[0];
-    trainerAnswered = false;
-    trainerOptions = makeOptions(trainerCard.category);
-    renderTrainerCard();
-  }
-
-  function makeOptions(correctId) {
-    const wrong = shuffle(categories.filter(item => item.id !== correctId)).slice(0, 3);
-    return shuffle([categoryMap.get(correctId), ...wrong]);
-  }
-
-  function renderTrainerCard() {
-    if (!trainerCard) return;
-    const card = $('#flip-card');
-    card.classList.remove('is-flipped');
-    $('#scenario-domain').textContent = trainerCard.domain || 'СИТУАЦИЯ';
-    $('#scenario-text').textContent = trainerCard.situation;
-    $('#scenario-question').textContent = trainerCard.question;
-    $('#answer-grid').innerHTML = trainerOptions.map((category, index) => `
-      <button class="answer-option" data-category="${category.id}" data-key="${index + 1}">${escapeHtml(category.name)}</button>`).join('');
-    $$('.answer-option', $('#answer-grid')).forEach(button => button.addEventListener('click', () => answerTrainer(button.dataset.category)));
-    updateScoreboard();
-  }
-
-  function answerTrainer(selectedId) {
-    if (trainerAnswered) return;
-    trainerAnswered = true;
-    const isCorrect = selectedId === trainerCard.category;
-    progress.answered += 1;
-    if (isCorrect) {
-      progress.correct += 1;
-      progress.streak += 1;
-      progress.score += 10 + Math.min(10, Math.max(0, progress.streak - 1) * 2);
-    } else {
-      progress.streak = 0;
-    }
-    if (!progress.seen.includes(trainerCard.id)) progress.seen.push(trainerCard.id);
-    saveProgress();
-
-    const category = categoryMap.get(trainerCard.category);
-    $('#result-mark').textContent = isCorrect ? `Верно · +${10 + Math.min(10, Math.max(0, progress.streak - 1) * 2)}` : `Не совсем · ${category.name}`;
-    $('#result-mark').classList.toggle('wrong', !isCorrect);
-    $('#answer-number').textContent = category.number;
-    $('#answer-title').textContent = category.name;
-    $('#answer-tagline').textContent = `«${category.nickname}»`;
-    $('#answer-explanation').innerHTML = `<p>${escapeHtml(trainerCard.explanation)}</p><p><strong>Сигнал:</strong> ${escapeHtml(category.signal)}</p>`;
-    updateScoreboard();
-    setTimeout(() => $('#flip-card').classList.add('is-flipped'), 180);
-  }
-
-  function updateScoreboard() {
-    $('#score-value').textContent = progress.score;
-    $('#streak-value').textContent = progress.streak;
-    $('#accuracy-value').textContent = progress.answered ? `${Math.round(progress.correct / progress.answered * 100)}%` : '—';
-    const total = allScenarios().length || 1;
-    const inCycle = Math.min(progress.seen.length, total);
-    $('#card-counter').textContent = `Карточка ${Math.min(inCycle + (trainerAnswered ? 0 : 1), total)} из ${total}`;
-    $('#progress-fill').style.width = `${inCycle / total * 100}%`;
   }
 
   function bindTrainer() {
-    $('#next-card')?.addEventListener('click', nextTrainerCard);
-    $('#generate-scenarios')?.addEventListener('click', generateMoreScenarios);
-    $('#trainer-model-select')?.addEventListener('change', event => selectModel(event.target.value));
-    $('#open-theory')?.addEventListener('click', () => {
-      currentTheoryId = trainerCard.category;
-      renderTheoryRail();
-      renderTheoryDetail();
-      setRoute('theory');
-      setTimeout(() => $('#theory-grid')?.scrollIntoView({ behavior: 'smooth' }), 80);
-    });
-    $('#reset-progress')?.addEventListener('click', () => {
-      Object.assign(progress, { score: 0, streak: 0, answered: 0, correct: 0, seen: [] });
-      saveProgress();
-      nextTrainerCard();
-      showToast('Прогресс сброшен');
-    });
-    window.addEventListener('keydown', event => {
-      if (!$('#view-trainer').classList.contains('is-active') || trainerAnswered) return;
-      const index = Number(event.key) - 1;
-      if (index >= 0 && index < trainerOptions.length) answerTrainer(trainerOptions[index].id);
-    });
-  }
-
-  async function api(path, options = {}) {
-    return window.QH_API.request(`/api${path}`, options);
-  }
-
-  async function initChat() {
-    if (chatInitialized) return;
-    chatInitialized = true;
-    bindChatControls();
-    await Promise.allSettled([loadSystemStatus(), loadSessions()]);
+    $('#submit-trainer').addEventListener('click', submitTrainer);
+    $('#refresh-progress').addEventListener('click', refreshProgressView);
+    $('#difficulty-select').addEventListener('change', loadTrainerCard);
   }
 
   async function loadSystemStatus() {
@@ -321,518 +259,460 @@
       const online = status.acpEnabled;
       $('#connection-dot').classList.toggle('online', online);
       $('#connection-dot').classList.toggle('fallback', !online && status.fallbackEnabled);
-      $('#connection-label').textContent = online ? 'ACP backend подключён' : 'локальный fallback';
+      $('#connection-label').textContent = online ? 'ACP подключён' : 'серверный fallback';
       $('#agent-dot').classList.toggle('online', online);
       $('#agent-dot').classList.toggle('fallback', !online && status.fallbackEnabled);
-      $('#agent-status').textContent = online
-        ? 'Java-клиент готов запускать ACP-совместимого агента.'
-        : 'ACP выключен; ответы даст встроенный методический fallback.';
-      $('#agent-command').textContent = status.agentCommand;
-      renderModelOptions(status.models || [], status.defaultModel);
+      $('#agent-status').textContent = online ? 'Семантическая оценка доступна.' : 'Ответы коуча работают через fallback; оценка может стать непроверенной.';
+      $('#agent-command').textContent = status.agentCommand || '—';
+      const models = (status.models || []).slice(0, 3);
+      selectedModel = models.includes(status.defaultModel) ? status.defaultModel : models[0] || null;
+      $('#model-select').innerHTML = models.map(model => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`).join('');
+      $('#model-select').value = selectedModel || '';
+      $('#model-select').disabled = !models.length;
     } catch (error) {
-      $('#connection-label').textContent = 'backend недоступен';
-      $('#agent-status').textContent = 'Теория и карточки работают офлайн. Для чата запустите backend.';
-      $('#agent-command').textContent = 'java backend → :8080';
+      $('#connection-label').textContent = 'сервер недоступен';
+      $('#agent-status').textContent = error.message;
     }
-  }
-
-  function renderModelOptions(models, defaultModel) {
-    const visibleModels = models.slice(0, 2);
-    const saved = localStorage.getItem('qh-coach-model');
-    selectedModel = visibleModels.includes(saved) ? saved : (visibleModels.includes(defaultModel) ? defaultModel : visibleModels[0]);
-    const options = visibleModels.map(model => `<option value="${escapeHtml(model)}">${escapeHtml(modelLabel(model))}</option>`).join('');
-    ['#model-select', '#trainer-model-select'].forEach(selector => {
-      const select = $(selector);
-      if (!select) return;
-      select.innerHTML = options;
-      select.value = selectedModel || '';
-      select.disabled = !visibleModels.length;
-    });
-  }
-
-  function modelLabel(model) {
-    return model.replace('[xhigh]', ' · extra high').replace('[high]', ' · high');
-  }
-
-  function selectModel(model) {
-    selectedModel = model;
-    localStorage.setItem('qh-coach-model', selectedModel);
-    ['#model-select', '#trainer-model-select'].forEach(selector => {
-      const select = $(selector);
-      if (select) select.value = selectedModel;
-    });
-    showToast(`Модель: ${modelLabel(selectedModel)}`);
-  }
-
-  async function loadSessions(preferredId = null) {
-    try {
-      let sessions = await api('/chat/sessions');
-      if (!sessions.length) {
-        const created = await api('/chat/sessions', { method: 'POST', body: JSON.stringify({ title: 'Новый диалог' }) });
-        sessions = [created];
-      }
-      renderSessions(sessions);
-      const target = preferredId || currentSessionId || sessions[0].id;
-      await selectSession(target);
-    } catch (error) {
-      renderOfflineChat(error.message);
-    }
-  }
-
-  function renderSessions(sessions) {
-    const list = $('#session-list');
-    list.innerHTML = sessions.map(session => `
-      <div class="session-row ${session.id === currentSessionId ? 'is-active' : ''}">
-        <button class="session-item" data-session="${session.id}">
-          <strong>${escapeHtml(session.title)}</strong>
-          <small>${formatDate(session.updatedAt)}</small>
-        </button>
-        <button class="session-delete" data-delete-session="${session.id}" data-session-title="${escapeHtml(session.title)}" aria-label="Удалить диалог ${escapeHtml(session.title)}" title="Удалить диалог"><span aria-hidden="true">×</span></button>
-      </div>`).join('');
-    $$('.session-item', list).forEach(button => button.addEventListener('click', () => selectSession(button.dataset.session)));
-    $$('.session-delete', list).forEach(button => button.addEventListener('click', () => requestDeleteSession(button.dataset.deleteSession, button.dataset.sessionTitle)));
-  }
-
-  function requestDeleteSession(sessionId, title) {
-    if (sending) {
-      showToast('Дождитесь завершения ответа');
-      return;
-    }
-    pendingDeleteSession = { id: sessionId, title };
-    $('#delete-dialog-name').textContent = `«${title}»`;
-    $('#delete-session-dialog').showModal();
-  }
-
-  async function confirmDeleteSession() {
-    if (!pendingDeleteSession) return;
-    const session = pendingDeleteSession;
-    const confirmButton = $('#delete-session-confirm');
-    const cancelButton = $('#delete-session-cancel');
-    confirmButton.disabled = true;
-    cancelButton.disabled = true;
-    confirmButton.textContent = 'Удаляем…';
-    try {
-      await api(`/chat/sessions/${session.id}`, { method: 'DELETE' });
-      if (currentSessionId === session.id) currentSessionId = null;
-      $('#delete-session-dialog').close();
-      pendingDeleteSession = null;
-      await loadSessions(currentSessionId);
-      showToast('Диалог удалён');
-    } catch (error) {
-      showToast(error.message);
-    } finally {
-      confirmButton.disabled = false;
-      cancelButton.disabled = false;
-      confirmButton.textContent = 'Удалить';
-    }
-  }
-
-  async function selectSession(sessionId) {
-    if (!sessionId) return;
-    currentSessionId = sessionId;
-    $$('.session-row').forEach(item => item.classList.toggle('is-active', item.querySelector('.session-item')?.dataset.session === sessionId));
-    const active = $(`.session-item[data-session="${sessionId}"]`);
-    if (coachMode === 'chat') $('#chat-title').textContent = active?.querySelector('strong')?.textContent || 'Тренер вопросов';
-    try {
-      const messages = await api(`/chat/sessions/${sessionId}/messages`);
-      renderMessages(messages);
-    } catch (error) {
-      showToast(error.message);
-    }
-  }
-
-  function renderMessages(messages) {
-    const feed = $('#message-feed');
-    if (!messages.length) {
-      feed.innerHTML = welcomeMarkup();
-      bindSuggestions();
-      return;
-    }
-    feed.innerHTML = messages.map(messageMarkup).join('');
-    feed.scrollTop = feed.scrollHeight;
-  }
-
-  function welcomeMarkup() {
-    return `
-      <article class="welcome-panel" id="chat-welcome">
-        <div class="welcome-symbol">?</div>
-        <h2>Принесите реальную задачу.<br>Мы взломаем её рамку.</h2>
-        <p>Коуч выберет подходящие категории, предложит точные вопросы, покажет анти-паттерн и даст микро-эксперимент на 24–48 часов.</p>
-        <div class="suggestion-grid">
-          <button data-prompt="Команда месяцами улучшает онбординг, но активация не растёт. Помоги выбрать вопросы-взломщики.">Онбординг не растёт</button>
-          <button data-prompt="Мы хотим найти риски перед запуском новой B2B-платформы. Проведи меня через инверсию и premortem.">Найти риски запуска</button>
-          <button data-prompt="Продукт перегружен функциями. Как с помощью упрощения и первых принципов найти ядро ценности?">Упростить продукт</button>
-          <button data-prompt="Нужна прорывная идея для корпоративного обучения. Используй кросс-дисциплину и гиперболу.">Найти прорывную идею</button>
-        </div>
-      </article>`;
-  }
-
-  function messageMarkup(message) {
-    const assistant = message.role === 'ASSISTANT';
-    return `<article class="message ${assistant ? 'assistant' : 'user'}">
-      <div class="message-meta">${assistant ? 'Тренер' : 'Вы'}<br>${formatTime(message.createdAt)}</div>
-      <div class="message-body">${assistant ? renderMarkdown(message.content) : escapeHtml(message.content).replace(/\n/g, '<br>')}
-        ${assistant ? `<span class="message-source">${escapeHtml(message.source || 'assistant')}</span>` : ''}
-      </div>
-    </article>`;
-  }
-
-  function appendUserMessage(text) {
-    const feed = $('#message-feed');
-    $('#chat-welcome')?.remove();
-    feed.insertAdjacentHTML('beforeend', `<article class="message user"><div class="message-meta">Вы<br>сейчас</div><div class="message-body">${escapeHtml(text).replace(/\n/g, '<br>')}</div></article>`);
-    feed.scrollTop = feed.scrollHeight;
-  }
-
-  function appendStreamingAssistant() {
-    const feed = $('#message-feed');
-    const id = `stream-${Date.now()}`;
-    feed.insertAdjacentHTML('beforeend', `<article class="message assistant" id="${id}"><div class="message-meta">Тренер<br>пишет</div><div class="message-body typing-caret"></div></article>`);
-    feed.scrollTop = feed.scrollHeight;
-    return { id, markdown: '' };
-  }
-
-  async function sendMessage(textOverride = null) {
-    if (sending) return;
-    const input = $('#message-input');
-    const text = (textOverride ?? input.value).trim();
-    if (!text) return;
-    if (!currentSessionId) {
-      showToast('Backend недоступен: запустите Java-приложение');
-      return;
-    }
-
-    sending = true;
-    $('#send-message').disabled = true;
-    input.value = '';
-    resizeComposer();
-    appendUserMessage(text);
-    const streamMessage = appendStreamingAssistant();
-
-    try {
-      const { runId } = await api(`/chat/sessions/${currentSessionId}/messages`, {
-        method: 'POST', body: JSON.stringify({ text, model: selectedModel })
-      });
-      consumeRun(runId, streamMessage);
-    } catch (error) {
-      finishStreaming(streamMessage, `## Не удалось отправить сообщение\n\n${error.message}`, 'ERROR');
-      sending = false;
-      $('#send-message').disabled = false;
-    }
-  }
-
-  function consumeRun(runId, streamMessage) {
-    const source = new EventSource(`/api/chat/runs/${runId}/events`);
-    activeEventSource = source;
-    source.addEventListener('delta', event => {
-      const data = JSON.parse(event.data);
-      streamMessage.markdown += data.text || '';
-      updateStreaming(streamMessage);
-    });
-    source.addEventListener('done', event => {
-      const data = JSON.parse(event.data);
-      source.close();
-      activeEventSource = null;
-      finishStreaming(streamMessage, streamMessage.markdown, data.source || 'ACP');
-      sending = false;
-      $('#send-message').disabled = false;
-      loadSessions(currentSessionId).catch(() => {});
-    });
-    source.addEventListener('failure', event => {
-      const data = JSON.parse(event.data);
-      source.close();
-      activeEventSource = null;
-      finishStreaming(streamMessage, `## Агент недоступен\n\n${data.message || 'Неизвестная ошибка'}`, 'ERROR');
-      sending = false;
-      $('#send-message').disabled = false;
-    });
-    source.onerror = () => {
-      if (source.readyState === EventSource.CLOSED) return;
-      source.close();
-      activeEventSource = null;
-      if (sending) {
-        finishStreaming(streamMessage, streamMessage.markdown || '## Поток прерван\n\nПроверьте backend и конфигурацию ACP.', 'INTERRUPTED');
-        sending = false;
-        $('#send-message').disabled = false;
-      }
-    };
-  }
-
-  function updateStreaming(streamMessage) {
-    const body = $(`#${streamMessage.id} .message-body`);
-    if (!body) return;
-    body.innerHTML = renderMarkdown(streamMessage.markdown);
-    body.classList.add('typing-caret');
-    const feed = $('#message-feed');
-    feed.scrollTop = feed.scrollHeight;
-  }
-
-  function finishStreaming(streamMessage, markdown, source) {
-    const article = $(`#${streamMessage.id}`);
-    if (!article) return;
-    const body = $('.message-body', article);
-    body.classList.remove('typing-caret');
-    body.innerHTML = `${renderMarkdown(markdown)}<span class="message-source">${escapeHtml(source)}</span>`;
-    $('.message-meta', article).innerHTML = `Тренер<br>${formatTime(new Date().toISOString())}`;
-  }
-
-  function bindChatControls() {
-    $('#composer').addEventListener('submit', event => { event.preventDefault(); sendMessage(); });
-    $('#message-input').addEventListener('input', resizeComposer);
-    $('#message-input').addEventListener('keydown', event => {
-      if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
-        sendMessage();
-      }
-    });
-    $('#new-session').addEventListener('click', async () => {
-      try {
-        const session = await api('/chat/sessions', { method: 'POST', body: JSON.stringify({ title: 'Новый диалог' }) });
-        await loadSessions(session.id);
-      } catch (error) { showToast(error.message); }
-    });
-    $('#delete-session-form').addEventListener('submit', event => {
-      event.preventDefault();
-      confirmDeleteSession();
-    });
-    $('#delete-session-cancel').addEventListener('click', () => {
-      pendingDeleteSession = null;
-      $('#delete-session-dialog').close();
-    });
-    $('#delete-session-dialog').addEventListener('cancel', event => {
-      if ($('#delete-session-confirm').disabled) {
-        event.preventDefault();
-        return;
-      }
-      pendingDeleteSession = null;
-    });
-    $('#delete-session-dialog').addEventListener('click', event => {
-      if (event.target !== event.currentTarget || $('#delete-session-confirm').disabled) return;
-      pendingDeleteSession = null;
-      event.currentTarget.close();
-    });
-    $$('[data-coach-mode]').forEach(button => button.addEventListener('click', () => setCoachMode(button.dataset.coachMode)));
-    $('#start-practice').addEventListener('click', startPractice);
-    $('#new-practice').addEventListener('click', startPractice);
-    $('#practice-form').addEventListener('submit', submitPractice);
-    $('#model-select').addEventListener('change', event => {
-      selectModel(event.target.value);
-    });
-    bindSuggestions();
   }
 
   function setCoachMode(mode) {
-    coachMode = mode === 'practice' ? 'practice' : 'chat';
+    coachMode = mode === 'chat' ? 'chat' : 'practice';
     $$('[data-coach-mode]').forEach(button => button.classList.toggle('is-active', button.dataset.coachMode === coachMode));
-    $('#message-feed').classList.toggle('is-hidden', coachMode !== 'chat');
-    $('#composer').classList.toggle('is-hidden', coachMode !== 'chat');
     $('#practice-panel').classList.toggle('is-hidden', coachMode !== 'practice');
     $('#new-practice').classList.toggle('is-hidden', coachMode !== 'practice');
-    $('#chat-title').textContent = coachMode === 'practice' ? 'Практика формулировки' : activeChatTitle();
-  }
-
-  function activeChatTitle() {
-    return $('.session-row.is-active .session-item strong')?.textContent || 'Тренер вопросов';
+    $('#message-feed').classList.toggle('is-hidden', coachMode !== 'chat');
+    $('#composer').classList.toggle('is-hidden', coachMode !== 'chat');
+    $('#session-tools').classList.toggle('is-hidden', coachMode !== 'chat');
+    $('#chat-title').textContent = coachMode === 'practice' ? 'Практика полного цикла' : 'Тренер вопросов';
+    if (coachMode === 'chat') initChat();
   }
 
   async function startPractice() {
+    clearAttemptPoll();
     const buttons = [$('#start-practice'), $('#new-practice')];
-    buttons.forEach(button => { button.disabled = true; });
-    $('#new-practice').textContent = 'Генерируем…';
+    buttons.forEach(button => setBusy(button, true));
     try {
-      const scenario = await api('/practice/scenario', {
-        method: 'POST', body: JSON.stringify({ model: selectedModel })
-      });
-      practiceState = { scenario, attempt: 1, previousFeedback: '', passed: false };
+      practiceAssignment = await api('/practice/assignments', { method: 'POST', body: '{}' });
+      practiceAttempt = null;
       $('#practice-empty').classList.add('is-hidden');
       $('#practice-workspace').classList.remove('is-hidden');
-      $('#practice-domain').textContent = scenario.domain || 'СИТУАЦИЯ';
-      $('#practice-situation').textContent = scenario.situation;
-      $('#practice-question').value = '';
-      $('#practice-idea').value = '';
+      $('#practice-domain').textContent = `${practiceAssignment.domain} · ${practiceAssignment.targetCategory.name}`;
+      $('#practice-situation').textContent = practiceAssignment.situation;
+      $('#practice-guidance').textContent = practiceAssignment.targetCategory.guidance;
+      $('#practice-form').reset();
+      setRevisionFields([]);
       $('#practice-attempt').textContent = 'Попытка 1';
       $('#practice-feedback').classList.add('is-hidden');
-      $('#practice-feedback').innerHTML = '';
-      $('#submit-practice').disabled = false;
-      $('#submit-practice').innerHTML = 'Проверить <span>→</span>';
-      updatePracticeProgress(1);
+      $('#practice-error').textContent = '';
+      updatePracticeProgress();
       $('#practice-question').focus();
     } catch (error) {
       showToast(error.message);
     } finally {
-      buttons.forEach(button => { button.disabled = false; });
+      buttons.forEach(button => setBusy(button, false));
       $('#new-practice').textContent = 'Новая ситуация';
+      $('#start-practice').innerHTML = 'Получить ситуацию <span>→</span>';
     }
+  }
+
+  function practiceValues() {
+    return Object.fromEntries(Object.keys(FIELD_LABELS).map(field => [field, $(`#practice-${field}`).value.trim()]));
+  }
+
+  function validatePractice(values, revisionFields = null) {
+    const minimums = { question: 30, answer: 40, reasoning: 50, solution: 35 };
+    const fields = revisionFields?.length ? revisionFields : Object.keys(FIELD_LABELS);
+    for (const field of fields) {
+      if (values[field].length < minimums[field]) return `${FIELD_LABELS[field]}: нужно не менее ${minimums[field]} содержательных символов.`;
+    }
+    return '';
   }
 
   async function submitPractice(event) {
     event.preventDefault();
-    if (!practiceState.scenario || practiceState.passed) return;
-    const question = $('#practice-question').value.trim();
-    const idea = $('#practice-idea').value.trim();
-    if (!question || !idea) return;
-    const button = $('#submit-practice');
-    button.disabled = true;
-    button.innerHTML = 'Проверяем…';
-    updatePracticeProgress(3);
+    if (!practiceAssignment) return;
+    const values = practiceValues();
+    const fieldsToRevise = practiceAttempt?.assessment?.fieldsToRevise || [];
+    const error = validatePractice(values, practiceAttempt?.status === 'NEEDS_REVISION' ? fieldsToRevise : null);
+    if (error) {
+      $('#practice-error').textContent = error;
+      return;
+    }
+    $('#practice-error').textContent = '';
+    const revision = practiceAttempt?.status === 'NEEDS_REVISION';
+    const path = revision ? `/practice/attempts/${practiceAttempt.attemptId}/revisions` : '/practice/attempts';
+    const body = revision
+      ? Object.fromEntries([...fieldsToRevise.map(field => [field, values[field]]), ['model', selectedModel], ['idempotencyKey', idempotencyKey('revision')]])
+      : { assignmentId: practiceAssignment.assignmentId, ...values, model: selectedModel, idempotencyKey: idempotencyKey('attempt') };
+    setBusy($('#submit-practice'), true, 'Оцениваем…');
+    updatePracticeProgress(true);
     try {
-      const review = await api('/practice/review', {
-        method: 'POST',
-        body: JSON.stringify({
-          situation: practiceState.scenario.situation,
-          question,
-          idea,
-          previousFeedback: practiceState.previousFeedback,
-          attempt: practiceState.attempt,
-          model: selectedModel
-        })
-      });
-      renderPracticeFeedback(review);
-    } catch (error) {
-      showToast(error.message);
-    } finally {
-      if (!practiceState.passed) {
-        button.disabled = false;
-        button.innerHTML = 'Проверить <span>→</span>';
+      practiceAttempt = await api(path, { method: 'POST', body: JSON.stringify(body) });
+      $('#practice-attempt').textContent = `Попытка ${practiceAttempt.attemptNumber} · оценка сервера`;
+      await followAttempt(practiceAttempt.attemptId);
+    } catch (requestError) {
+      $('#practice-error').textContent = requestError.message;
+      setBusy($('#submit-practice'), false, 'Отправить на оценку →');
+    }
+  }
+
+  async function followAttempt(attemptId) {
+    clearAttemptPoll();
+    const poll = async () => {
+      try {
+        practiceAttempt = await api(`/practice/attempts/${attemptId}`);
+        if (TERMINAL_ATTEMPT_STATUSES.has(practiceAttempt.status)) {
+          clearAttemptPoll();
+          renderPracticeFeedback(practiceAttempt);
+          return;
+        }
+        attemptPoll = window.setTimeout(poll, 900);
+      } catch (error) {
+        clearAttemptPoll();
+        $('#practice-error').textContent = error.message;
+        setBusy($('#submit-practice'), false, 'Повторить →');
       }
+    };
+    await poll();
+  }
+
+  function clearAttemptPoll() {
+    if (attemptPoll) window.clearTimeout(attemptPoll);
+    attemptPoll = null;
+  }
+
+  function renderPracticeFeedback(attempt) {
+    const assessment = attempt.assessment;
+    const passed = attempt.status === 'PASSED';
+    const unverified = attempt.status === 'UNVERIFIED';
+    const panel = $('#practice-feedback');
+    panel.classList.remove('is-hidden', 'passed');
+    panel.classList.toggle('passed', passed);
+    const fit = assessment.categoryFitScore == null ? '—' : `${assessment.categoryFitScore}/2`;
+    const strength = assessment.questionStrengthScore == null ? '—' : `${assessment.questionStrengthScore}/5`;
+    panel.innerHTML = `
+      <div class="feedback-verdict">${passed ? 'Зачёт' : unverified ? 'Не проверено' : 'Нужна корректировка'} · ${escapeHtml(attempt.targetCategory.name)}</div>
+      <h3>${passed ? 'Полный ход мысли принят.' : unverified ? 'Сервер не стал выдумывать оценку.' : 'Исправьте отмеченные шаги.'}</h3>
+      <div class="assessment-grid">
+        <section><span>Полнота</span><strong>${escapeHtml(assessment.completeness || '—')}</strong><small>${assessment.steps.map(step => `${FIELD_LABELS[step.field] || step.field}: ${step.status}`).join(' · ')}</small></section>
+        <section><span>Категория</span><strong>${fit}</strong><small>${escapeHtml(assessment.categoryFitEvidence || 'Семантический балл не присвоен')}</small></section>
+        <section><span>Сила вопроса</span><strong>${strength}</strong><small>${escapeHtml(assessment.confidence ? `Уверенность: ${assessment.confidence}` : 'Семантический балл не присвоен')}</small></section>
+      </div>
+      <p>${escapeHtml(assessment.feedback)}</p>
+      ${assessment.strengths?.length ? `<div class="feedback-next"><strong>Что уже хорошо</strong><span>${assessment.strengths.map(escapeHtml).join(' · ')}</span></div>` : ''}
+      ${!passed && !unverified ? `<div class="feedback-next"><strong>Приоритетная правка</strong><span>${escapeHtml(assessment.priorityCorrection.what)} — ${escapeHtml(assessment.priorityCorrection.why)}<br><em>${escapeHtml(assessment.priorityCorrection.example)}</em></span></div>` : ''}
+      <div class="back-actions">${passed ? '<button class="primary-button" id="practice-next" type="button">Следующая ситуация <span>→</span></button>' : unverified ? '<button class="secondary-button" id="practice-retry" type="button">Проверить позже</button>' : '<button class="primary-button" id="practice-revise" type="button">Исправить отмеченное <span>→</span></button>'}</div>`;
+    setBusy($('#submit-practice'), false, passed ? 'Зачтено' : 'Отправить исправление →');
+    $('#submit-practice').disabled = passed || unverified;
+    if (passed) $('#practice-next').addEventListener('click', startPractice);
+    if (unverified) $('#practice-retry').addEventListener('click', () => showToast('Попытка сохранена. Создайте новую проверку, когда модель будет доступна.'));
+    if (!passed && !unverified) {
+      setRevisionFields(assessment.fieldsToRevise);
+      $('#practice-revise').addEventListener('click', () => focusFirstRevision(assessment.fieldsToRevise));
     }
+    updatePracticeProgress(false, passed);
+    panel.focus({ preventScroll: true });
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  function renderPracticeFeedback(review) {
-    const passed = review.verdict === 'PASSED';
-    const feedback = $('#practice-feedback');
-    feedback.classList.remove('is-hidden', 'passed');
-    feedback.classList.toggle('passed', passed);
-    feedback.innerHTML = `
-      <div class="feedback-verdict">${passed ? 'Зачёт' : 'Нужно улучшить'} · ${escapeHtml(review.category || 'разбор')}</div>
-      <div class="feedback-score">${Math.max(1, Math.min(5, Number(review.score) || 1))}<small>/ 5</small></div>
-      <h3>${passed ? 'Рамка взломана.' : 'Одна правка на следующий ход.'}</h3>
-      <p>${escapeHtml(review.feedback || '')}</p>
-      <div class="feedback-next"><strong>${passed ? 'Как проверить' : 'Следующий шаг'}</strong><span>${escapeHtml(review.nextStep || '')}</span></div>
-      ${passed ? '<button class="primary-button" id="practice-next" type="button">Следующая ситуация <span>→</span></button>' : ''}`;
-    practiceState.previousFeedback = `${review.feedback || ''} ${review.nextStep || ''}`.trim();
-    practiceState.passed = passed;
-    updatePracticeProgress(passed ? 5 : 4);
-    if (passed) {
-      $('#submit-practice').disabled = true;
-      $('#practice-next').addEventListener('click', startPractice);
-    } else {
-      practiceState.attempt += 1;
-      $('#practice-attempt').textContent = `Попытка ${practiceState.attempt}`;
-      $('#practice-question').focus();
-    }
-    feedback.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  function setRevisionFields(fields) {
+    const revision = fields.length > 0;
+    Object.keys(FIELD_LABELS).forEach(field => {
+      const input = $(`#practice-${field}`);
+      const editable = !revision || fields.includes(field);
+      input.disabled = !editable;
+      input.closest('.practice-form')?.classList.toggle('is-revision', revision);
+      input.classList.toggle('needs-revision', revision && editable);
+    });
   }
 
-  function updatePracticeProgress(stage) {
-    $$('.practice-progress span').forEach((item, index) => item.classList.toggle('is-active', index < stage));
+  function focusFirstRevision(fields) {
+    if (fields[0]) $(`#practice-${fields[0]}`)?.focus();
   }
 
-  function bindSuggestions() {
-    $$('[data-prompt]', $('#message-feed')).forEach(button => button.addEventListener('click', () => sendMessage(button.dataset.prompt)));
+  function updatePracticeProgress(evaluating = false, passed = false) {
+    const values = practiceValues();
+    $$('.practice-progress span').forEach((item, index) => {
+      const field = Object.keys(FIELD_LABELS)[index];
+      item.classList.toggle('is-active', passed || evaluating || values[field]?.length > 0);
+    });
   }
 
-  async function generateMoreScenarios() {
-    const button = $('#generate-scenarios');
-    button.disabled = true;
-    button.textContent = 'Генерируем…';
+  function bindPractice() {
+    $$('[data-coach-mode]').forEach(button => button.addEventListener('click', () => setCoachMode(button.dataset.coachMode)));
+    $('#start-practice').addEventListener('click', startPractice);
+    $('#new-practice').addEventListener('click', startPractice);
+    $('#practice-form').addEventListener('submit', submitPractice);
+    $('#practice-form').addEventListener('input', () => updatePracticeProgress());
+    $('#model-select').addEventListener('change', event => { selectedModel = event.target.value || null; });
+  }
+
+  async function initChat() {
+    if (currentSessionId) return;
     try {
-      const rows = await api('/scenarios/generate', { method: 'POST', body: JSON.stringify({ count: 7, model: selectedModel }) });
-      generatedScenarios.push(...rows.map(normalizeGeneratedScenario));
-      updateScoreboard();
-      showToast(`Добавлено ситуаций: ${rows.length}`);
+      let sessions = await api('/chat/sessions');
+      if (!sessions.length) sessions = [await api('/chat/sessions', { method: 'POST', body: JSON.stringify({ title: 'Новый диалог' }) })];
+      renderSessions(sessions);
+      await selectSession(sessions[0].id);
     } catch (error) {
-      showToast(error.message);
-    } finally {
-      button.disabled = false;
-      button.textContent = '+ 7 ситуаций';
+      $('#message-feed').innerHTML = errorPanel('Диалог недоступен', error.message);
     }
   }
 
-  function normalizeGeneratedScenario(row) {
-    const text = row.situation || '';
-    const quoteAt = text.indexOf('«');
-    return {
-      id: `gen-${row.id}`,
-      category: row.category,
-      domain: 'СГЕНЕРИРОВАНО',
-      situation: quoteAt > 0 ? text.slice(0, quoteAt).trim() : 'Дополнительная ситуация от ACP-агента.',
-      question: quoteAt > 0 ? text.slice(quoteAt).trim() : text,
-      explanation: row.explanation
+  function renderSessions(sessions) {
+    $('#session-list').innerHTML = sessions.map(session => `<div class="session-row ${session.id === currentSessionId ? 'is-active' : ''}"><button class="session-item" data-session="${session.id}"><strong>${escapeHtml(session.title)}</strong><small>${formatDate(session.updatedAt)}</small></button><button class="session-delete" data-delete-session="${session.id}" data-title="${escapeHtml(session.title)}" aria-label="Удалить диалог">×</button></div>`).join('');
+    $$('.session-item').forEach(button => button.addEventListener('click', () => selectSession(button.dataset.session)));
+    $$('.session-delete').forEach(button => button.addEventListener('click', () => requestDeleteSession(button.dataset.deleteSession, button.dataset.title)));
+  }
+
+  async function reloadSessions(preferredId) {
+    const sessions = await api('/chat/sessions');
+    renderSessions(sessions);
+    if (preferredId && sessions.some(item => item.id === preferredId)) await selectSession(preferredId);
+  }
+
+  async function selectSession(id) {
+    currentSessionId = id;
+    $$('.session-row').forEach(row => row.classList.toggle('is-active', row.querySelector('.session-item')?.dataset.session === id));
+    const messages = await api(`/chat/sessions/${id}/messages`);
+    renderMessages(messages);
+  }
+
+  function renderMessages(messages) {
+    const feed = $('#message-feed');
+    feed.innerHTML = messages.length ? messages.map(messageMarkup).join('') : `<article class="welcome-panel"><div class="welcome-symbol">?</div><h2>Принесите реальную задачу.</h2><p>Коуч поможет выбрать технику, сформулировать вопрос и спроектировать эксперимент.</p></article>`;
+    feed.scrollTop = feed.scrollHeight;
+  }
+
+  function messageMarkup(message) {
+    const assistant = message.role === 'ASSISTANT';
+    return `<article class="message ${assistant ? 'assistant' : 'user'}"><div class="message-meta">${assistant ? 'Тренер' : 'Вы'}<br>${formatTime(message.createdAt)}</div><div class="message-body">${assistant ? renderMarkdown(message.content) : escapeHtml(message.content).replace(/\n/g, '<br>')}${assistant ? `<span class="message-source">${escapeHtml(message.source || 'assistant')}</span>` : ''}</div></article>`;
+  }
+
+  async function sendMessage() {
+    if (sending || !currentSessionId) return;
+    const input = $('#message-input');
+    const text = input.value.trim();
+    if (!text) return;
+    sending = true;
+    $('#send-message').disabled = true;
+    input.value = '';
+    $('#message-feed').insertAdjacentHTML('beforeend', messageMarkup({ role: 'USER', content: text, createdAt: new Date().toISOString() }));
+    const streamId = `stream-${Date.now()}`;
+    $('#message-feed').insertAdjacentHTML('beforeend', `<article class="message assistant" id="${streamId}"><div class="message-meta">Тренер<br>пишет</div><div class="message-body typing-caret"></div></article>`);
+    try {
+      const run = await api(`/chat/sessions/${currentSessionId}/messages`, { method: 'POST', body: JSON.stringify({ text, model: selectedModel }) });
+      consumeChatRun(run.runId, streamId);
+    } catch (error) {
+      finishChat(streamId, `## Ошибка\n\n${error.message}`, 'ERROR');
+    }
+  }
+
+  function consumeChatRun(runId, streamId) {
+    const source = new EventSource(`/api/chat/runs/${runId}/events`);
+    activeStream = source;
+    let markdown = '';
+    source.addEventListener('delta', event => {
+      markdown += JSON.parse(event.data).text || '';
+      $(`#${streamId} .message-body`).innerHTML = renderMarkdown(markdown);
+    });
+    source.addEventListener('done', event => {
+      source.close(); activeStream = null;
+      finishChat(streamId, markdown, JSON.parse(event.data).source || 'ACP');
+      reloadSessions(currentSessionId).catch(() => {});
+    });
+    source.addEventListener('failure', event => {
+      source.close(); activeStream = null;
+      finishChat(streamId, `## Агент недоступен\n\n${JSON.parse(event.data).message || 'Неизвестная ошибка'}`, 'ERROR');
+    });
+    source.onerror = () => {
+      if (source.readyState === EventSource.CLOSED) return;
+      source.close(); activeStream = null;
+      finishChat(streamId, markdown || '## Поток прерван', 'INTERRUPTED');
     };
   }
 
-  function renderOfflineChat() {
-    currentSessionId = null;
-    $('#session-list').innerHTML = '<div style="padding:14px;color:#999;font-size:12px;line-height:1.5">История появится после запуска backend.</div>';
-    $('#message-feed').innerHTML = `<article class="welcome-panel"><div class="welcome-symbol">!</div><h2>Чат пока офлайн.</h2><p>Запустите Java backend — и здесь появятся диалоги, потоковые long-post ответы и генерация новых ситуаций. Теория и карточки уже полностью доступны без сервера.</p></article>`;
+  function finishChat(streamId, markdown, source) {
+    const body = $(`#${streamId} .message-body`);
+    if (body) body.innerHTML = `${renderMarkdown(markdown)}<span class="message-source">${escapeHtml(source)}</span>`;
+    sending = false;
+    $('#send-message').disabled = false;
   }
 
-  function resizeComposer() {
-    const textarea = $('#message-input');
-    textarea.style.height = 'auto';
-    textarea.style.height = `${Math.min(190, textarea.scrollHeight)}px`;
+  function requestDeleteSession(id, title) {
+    pendingDeleteSession = { id, title };
+    $('#delete-dialog-name').textContent = `«${title}»`;
+    $('#delete-session-dialog').showModal();
   }
 
-  function formatDate(value) {
-    if (!value) return '';
-    return new Intl.DateTimeFormat('ru', { day: '2-digit', month: 'short' }).format(new Date(value));
+  async function confirmDeleteSession(event) {
+    event.preventDefault();
+    if (!pendingDeleteSession) return;
+    try {
+      await api(`/chat/sessions/${pendingDeleteSession.id}`, { method: 'DELETE' });
+      if (currentSessionId === pendingDeleteSession.id) currentSessionId = null;
+      $('#delete-session-dialog').close();
+      pendingDeleteSession = null;
+      await initChat();
+    } catch (error) { showToast(error.message); }
   }
 
-  function formatTime(value) {
-    if (!value) return '';
-    return new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+  function bindChat() {
+    $('#composer').addEventListener('submit', event => { event.preventDefault(); sendMessage(); });
+    $('#message-input').addEventListener('keydown', event => {
+      if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); }
+    });
+    $('#new-session').addEventListener('click', async () => {
+      try {
+        const session = await api('/chat/sessions', { method: 'POST', body: JSON.stringify({ title: 'Новый диалог' }) });
+        await reloadSessions(session.id);
+      } catch (error) { showToast(error.message); }
+    });
+    $('#delete-session-form').addEventListener('submit', confirmDeleteSession);
+    $('#delete-session-cancel').addEventListener('click', () => { pendingDeleteSession = null; $('#delete-session-dialog').close(); });
+  }
+
+  async function loadModeration() {
+    if (!currentUser?.roles?.includes('ADMIN')) return;
+    $('#moderation-status').textContent = 'Загружаем очередь…';
+    try {
+      moderationRows = await api(`/admin/scenario-candidates?status=${encodeURIComponent(moderationStatus)}`);
+      renderCandidateList();
+      $('#moderation-status').textContent = `${STATUS_LABELS[moderationStatus]}: ${moderationRows.length}`;
+      if (selectedCandidate) {
+        selectedCandidate = moderationRows.find(item => item.id === selectedCandidate.id) || null;
+        renderCandidateDetail();
+      }
+    } catch (error) {
+      $('#moderation-status').textContent = error.message;
+    }
+  }
+
+  function renderCandidateList() {
+    $('#candidate-list').innerHTML = moderationRows.length ? moderationRows.map(item => `
+      <button class="candidate-row ${selectedCandidate?.id === item.id ? 'is-active' : ''}" data-candidate="${item.id}">
+        <span>${escapeHtml(item.difficulty || '—')} · ${escapeHtml(item.category || 'без категории')}</span>
+        <strong>${escapeHtml(item.situation || 'Некорректный кандидат')}</strong>
+        <small>${escapeHtml(item.domain || STATUS_LABELS[item.status] || item.status)}</small>
+      </button>`).join('') : '<p class="empty-queue">В этом статусе кейсов нет.</p>';
+    $$('.candidate-row').forEach(button => button.addEventListener('click', () => {
+      selectedCandidate = moderationRows.find(item => item.id === button.dataset.candidate);
+      renderCandidateList();
+      renderCandidateDetail();
+    }));
+  }
+
+  function renderCandidateDetail() {
+    const panel = $('#candidate-detail');
+    if (!selectedCandidate) { panel.innerHTML = '<p>Выберите кандидат в очереди.</p>'; return; }
+    const item = selectedCandidate;
+    const editable = item.status === 'PENDING_REVIEW';
+    panel.innerHTML = `
+      <form id="candidate-form" class="candidate-form">
+        <div class="candidate-heading"><span>${escapeHtml(STATUS_LABELS[item.status] || item.status)} · v${item.version}</span><strong>${escapeHtml(item.sourceModel || 'модель не указана')}</strong></div>
+        ${item.rejectionReasons?.length ? `<div class="moderation-reasons"><strong>Автоматические причины</strong>${item.rejectionReasons.map(reason => `<span>${escapeHtml(reason)}</span>`).join('')}</div>` : ''}
+        <div class="candidate-grid"><label>Категория<input name="category" value="${escapeHtml(item.category || '')}" ${editable ? '' : 'disabled'}></label><label>Сложность<select name="difficulty" ${editable ? '' : 'disabled'}>${['L1','L2','L3'].map(level => `<option ${item.difficulty === level ? 'selected' : ''}>${level}</option>`).join('')}</select></label><label>Домен<input name="domain" value="${escapeHtml(item.domain || '')}" ${editable ? '' : 'disabled'}></label></div>
+        <label>Ситуация<textarea name="situation" rows="5" ${editable ? '' : 'disabled'}>${escapeHtml(item.situation || '')}</textarea></label>
+        <label>Вопрос<textarea name="question" rows="3" ${editable ? '' : 'disabled'}>${escapeHtml(item.question || '')}</textarea></label>
+        <label>Подсказка<textarea name="hint" rows="2" ${editable ? '' : 'disabled'}>${escapeHtml(item.hint || '')}</textarea></label>
+        <label>Объяснение<textarea name="explanation" rows="3" ${editable ? '' : 'disabled'}>${escapeHtml(item.explanation || '')}</textarea></label>
+        <label>Варианты (коды через запятую)<input name="options" value="${escapeHtml((item.options || []).join(', '))}" ${editable ? '' : 'disabled'}></label>
+        <div class="candidate-grid"><label>Правильная<input name="correctCategory" value="${escapeHtml(item.correctCategory || '')}" ${editable ? '' : 'disabled'}></label><label>Путают с<input name="confusedWith" value="${escapeHtml(item.confusedWith || '')}" ${editable ? '' : 'disabled'}></label></div>
+        <label>Контраст<textarea name="contrast" rows="2" ${editable ? '' : 'disabled'}>${escapeHtml(item.contrast || '')}</textarea></label>
+        ${editable ? `<div class="candidate-actions"><button class="secondary-button" id="save-candidate" type="submit">Сохранить правки</button><button class="primary-button" id="approve-candidate" type="button">Опубликовать <span>→</span></button><button class="text-button danger" id="reject-candidate" type="button">Отклонить</button></div>` : ''}
+      </form>`;
+    if (editable) {
+      $('#candidate-form').addEventListener('submit', saveCandidate);
+      $('#approve-candidate').addEventListener('click', approveCandidate);
+      $('#reject-candidate').addEventListener('click', rejectCandidate);
+    }
+  }
+
+  function candidateDraft() {
+    const form = new FormData($('#candidate-form'));
+    return {
+      category: form.get('category'), secondaryCategory: null, difficulty: form.get('difficulty'),
+      domain: form.get('domain'), situation: form.get('situation'), question: form.get('question'),
+      hint: form.get('hint'), options: String(form.get('options')).split(',').map(item => item.trim()).filter(Boolean),
+      correctCategory: form.get('correctCategory'), explanation: form.get('explanation'),
+      confusedWith: form.get('confusedWith') || null, contrast: form.get('contrast') || null
+    };
+  }
+
+  async function saveCandidate(event) {
+    event.preventDefault();
+    try {
+      selectedCandidate = await api(`/admin/scenario-candidates/${selectedCandidate.id}`, { method: 'PUT', body: JSON.stringify({ expectedVersion: selectedCandidate.version, draft: candidateDraft() }) });
+      showToast(selectedCandidate.status === 'AUTO_REJECTED' ? 'Правка сохранена, но кандидат не прошёл автофильтр' : 'Правка сохранена');
+      await loadModeration();
+    } catch (error) { showToast(error.message); }
+  }
+
+  async function approveCandidate() {
+    try {
+      await api(`/admin/scenario-candidates/${selectedCandidate.id}/approve`, { method: 'POST', body: JSON.stringify({ expectedVersion: selectedCandidate.version }) });
+      selectedCandidate = null;
+      showToast('Кейс опубликован и доступен серверному тренажёру');
+      await loadModeration();
+    } catch (error) { showToast(error.message); }
+  }
+
+  async function rejectCandidate() {
+    const reason = window.prompt('Причина: WEAK_LEARNING_VALUE, WRONG_CATEGORY, DUPLICATE, UNSAFE_CONTENT, POOR_WRITING или OTHER', 'WEAK_LEARNING_VALUE');
+    if (!reason) return;
+    const comment = window.prompt('Комментарий модератора', '') || '';
+    try {
+      await api(`/admin/scenario-candidates/${selectedCandidate.id}/reject`, { method: 'POST', body: JSON.stringify({ expectedVersion: selectedCandidate.version, reason: reason.trim().toUpperCase(), comment }) });
+      selectedCandidate = null;
+      showToast(REJECTION_LABELS[reason.trim().toUpperCase()] || 'Кейс отклонён');
+      await loadModeration();
+    } catch (error) { showToast(error.message); }
+  }
+
+  async function generateCandidates() {
+    const count = Number($('#moderation-count').value);
+    const button = $('#generate-candidates');
+    setBusy(button, true, 'Генерируем…');
+    try {
+      const rows = await api('/admin/scenario-candidates/generate', { method: 'POST', body: JSON.stringify({ count, model: selectedModel }) });
+      const rejected = rows.filter(item => item.status === 'AUTO_REJECTED').length;
+      moderationStatus = 'PENDING_REVIEW';
+      $$('.moderation-toolbar button').forEach(item => item.classList.toggle('is-active', item.dataset.moderationStatus === moderationStatus));
+      showToast(`В очередь: ${rows.length - rejected}; автоотказ: ${rejected}`);
+      await loadModeration();
+    } catch (error) { showToast(error.message); }
+    finally { setBusy(button, false, 'В очередь →'); }
+  }
+
+  function bindModeration() {
+    $('#generate-candidates').addEventListener('click', generateCandidates);
+    $$('.moderation-toolbar button').forEach(button => button.addEventListener('click', () => {
+      moderationStatus = button.dataset.moderationStatus;
+      selectedCandidate = null;
+      $$('.moderation-toolbar button').forEach(item => item.classList.toggle('is-active', item === button));
+      loadModeration();
+    }));
   }
 
   function renderMarkdown(markdown = '') {
-    const lines = String(markdown).replace(/\r/g, '').split('\n');
-    const html = [];
-    let listType = null;
-    let inCode = false;
-    let codeLines = [];
-
-    const closeList = () => {
-      if (listType) html.push(`</${listType}>`);
-      listType = null;
-    };
-    const inline = text => escapeHtml(text)
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
+    return escapeHtml(markdown)
+      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^##? (.+)$/gm, '<h2>$1</h2>')
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .split(/\n{2,}/).map(block => /^<h[23]>/.test(block) ? block : `<p>${block.replace(/\n/g, '<br>')}</p>`).join('');
+  }
 
-    for (const rawLine of lines) {
-      const line = rawLine.trimEnd();
-      if (line.trim().startsWith('```')) {
-        closeList();
-        if (inCode) {
-          html.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
-          codeLines = [];
-        }
-        inCode = !inCode;
-        continue;
-      }
-      if (inCode) { codeLines.push(rawLine); continue; }
-      if (!line.trim()) { closeList(); continue; }
-      let match;
-      if ((match = line.match(/^###\s+(.+)/))) { closeList(); html.push(`<h3>${inline(match[1])}</h3>`); continue; }
-      if ((match = line.match(/^##\s+(.+)/))) { closeList(); html.push(`<h2>${inline(match[1])}</h2>`); continue; }
-      if ((match = line.match(/^#\s+(.+)/))) { closeList(); html.push(`<h2>${inline(match[1])}</h2>`); continue; }
-      if ((match = line.match(/^>\s?(.+)/))) { closeList(); html.push(`<blockquote>${inline(match[1])}</blockquote>`); continue; }
-      if ((match = line.match(/^[-*]\s+(.+)/))) {
-        if (listType !== 'ul') { closeList(); listType = 'ul'; html.push('<ul>'); }
-        html.push(`<li>${inline(match[1])}</li>`); continue;
-      }
-      if ((match = line.match(/^\d+[.)]\s+(.+)/))) {
-        if (listType !== 'ol') { closeList(); listType = 'ol'; html.push('<ol>'); }
-        html.push(`<li>${inline(match[1])}</li>`); continue;
-      }
-      closeList();
-      if (/^---+$/.test(line.trim())) html.push('<hr>');
-      else html.push(`<p>${inline(line)}</p>`);
-    }
-    closeList();
-    if (codeLines.length) html.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
-    return html.join('');
+  function errorPanel(title, message) {
+    return `<article class="error-panel"><strong>${escapeHtml(title)}</strong><p>${escapeHtml(message)}</p></article>`;
+  }
+
+  function formatDate(value) {
+    return value ? new Intl.DateTimeFormat('ru', { day: '2-digit', month: 'short' }).format(new Date(value)) : '';
+  }
+
+  function formatTime(value) {
+    return value ? new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '';
   }
 
   let toastTimer;
@@ -840,35 +720,36 @@
     const toast = $('#toast');
     toast.textContent = message;
     toast.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+    window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => toast.classList.remove('show'), 3200);
   }
 
-  function boot() {
-    renderTheoryRail();
-    renderTheoryDetail();
+  async function boot(user) {
+    currentUser = user;
+    const admin = user.roles?.includes('ADMIN');
+    $('[data-route="moderation"]').hidden = !admin;
     bindNavigation();
     bindTrainer();
-    updateScoreboard();
-    loadSystemStatus();
+    bindPractice();
+    bindChat();
+    bindModeration();
+    await Promise.allSettled([loadCurriculum(), refreshProgressView(), loadSystemStatus()]);
+    setCoachMode('practice');
     setRoute(location.hash.slice(1) || 'theory', false);
-    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
-    }
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 
   window.QH_APP = Object.freeze({
-    start() {
+    start(user) {
       if (booted) return;
       booted = true;
-      boot();
+      boot(user);
     },
     stop() {
-      activeEventSource?.close();
-      activeEventSource = null;
+      activeStream?.close();
+      activeStream = null;
+      clearAttemptPoll();
       sending = false;
-      const sendButton = $('#send-message');
-      if (sendButton) sendButton.disabled = false;
     }
   });
 })();

@@ -10,31 +10,13 @@ import org.springframework.stereotype.Component;
 public final class PromptCatalog {
 
     private final String trainingCoach;
-    private final String scenarioGenerator;
-    private final String practiceScenario;
-    private final String practiceReview;
 
     public PromptCatalog() {
         this.trainingCoach = read("prompts/training-coach.md");
-        this.scenarioGenerator = read("prompts/scenario-generator.md");
-        this.practiceScenario = read("prompts/practice-scenario.md");
-        this.practiceReview = read("prompts/practice-review.md");
     }
 
     public String trainingCoach() {
         return trainingCoach;
-    }
-
-    public String scenarioGenerator() {
-        return scenarioGenerator;
-    }
-
-    public String practiceScenario() {
-        return practiceScenario;
-    }
-
-    public String practiceReview() {
-        return practiceReview;
     }
 
     private static String read(String location) {

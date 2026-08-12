@@ -1,12 +1,14 @@
 # «Вопросы-взломщики» — тренажёр + ACP-коуч
 
-Монорепозиторий серверного веб-приложения из трёх частей:
+Монорепозиторий серверного веб-приложения из пяти частей:
 
-1. **Теория** — семь базовых категорий, формулы, примеры и типичные ошибки.
-2. **Тренажёр** — 56 ситуаций, четыре варианта ответа, переворот карточки, очки и серия правильных ответов.
-3. **Обучение в чате** — длинные Markdown-ответы, персональная история диалогов в H2 file и потоковая выдача через SSE. Backend запускает ACP-совместимого coding agent как дочерний процесс; когда агент не настроен, включается содержательный локальный fallback-коуч.
+1. **Теория** — семь серверных категорий, формулы, примеры, контрасты и доказательные источники.
+2. **Адаптивный тренажёр** — 98 проверенных карточек трёх уровней; backend выдаёт варианты, проверяет ответ и обновляет освоение.
+3. **Практика полного цикла** — вопрос, ответ, рассуждение и решение с серверной оценкой полноты, попадания в категорию и силы вопроса.
+4. **Обучение в чате** — персональная история и потоковая выдача через SSE; при отключённом агенте работает методический fallback.
+5. **Контур модерации** — сгенерированные ситуации проходят автоматическую отбраковку и ручное решение администратора до публикации.
 
-Аккаунты, права доступа и пользовательские данные контролирует backend. Frontend обслуживает формы и отображает серверные ответы; `/api/**`, кроме явно публичных auth/status-маршрутов, требует серверную сессию.
+Аккаунты, права доступа, учебная программа, правильные ответы, оценки, прогресс и публикация кейсов контролируются backend. Frontend обслуживает формы и отображает серверные ответы; `/api/**`, кроме явно публичных auth/status-маршрутов, требует серверную сессию.
 
 ## Быстрый запуск
 
@@ -80,7 +82,8 @@ H2 создаёт файл `backend/data/question-hacker.mv.db`. Консоль 
 ## Отдельные промпты
 
 - `backend/src/main/resources/prompts/training-coach.md`
-- `backend/src/main/resources/prompts/scenario-generator.md`
+- `backend/src/main/resources/prompts/scenario-candidates-v1.md`
+- `backend/src/main/resources/prompts/practice-assessment-v1.md`
 
 Промпты загружаются как ресурсы и не зашиты в Java-код.
 
@@ -98,14 +101,17 @@ H2 создаёт файл `backend/data/question-hacker.mv.db`. Консоль 
 - `GET /api/chat/sessions/{id}/messages`
 - `POST /api/chat/sessions/{id}/messages`
 - `GET /api/chat/runs/{runId}/events` — SSE
-- `GET /api/scenarios/generated`
-- `POST /api/scenarios/generate`
-- `POST /api/practice/scenario` — новая ситуация для управляемой практики
-- `POST /api/practice/review` — проверка вопроса и идеи пользователя
+- `GET /api/curriculum/categories` и `GET /api/curriculum/categories/{code}`
+- `GET /api/trainer/next` и `POST /api/trainer/attempts`
+- `GET /api/progress`
+- `POST /api/practice/assignments`
+- `POST /api/practice/attempts`, `GET /api/practice/attempts/{id}` и `POST /api/practice/attempts/{id}/revisions`
+- `GET /api/practice/attempts/{id}/events` — SSE статуса оценки
+- `/api/admin/scenario-candidates/**` — генерация, просмотр, правка, отказ и публикация (только ADMIN)
 
 ## Структура данных
 
-`chat_session` — диалоги; `chat_message` — сообщения и источник (`USER`, `ACP`, `FALLBACK`); `generated_scenario` — дополнительные ситуации, созданные агентом.
+`chat_session` и `chat_message` хранят персональные диалоги. `category`, `theory_section`, `scenario` и `scenario_option` образуют серверную программу. `trainer_issuance`, `trainer_attempt`, `category_mastery` и `category_confusion` хранят персональную траекторию. `practice_*` хранит полный цикл практики и аудируемую оценку. `scenario_candidate` и `moderation_action` образуют очередь качества.
 
 `app_user` и `user_role` хранят локальные аккаунты и роли. Пароли сохраняются только как BCrypt hash. Каждый `chat_session` принадлежит конкретному пользователю; чужой идентификатор возвращает `404`, не раскрывая существование ресурса.
 

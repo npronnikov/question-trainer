@@ -8,6 +8,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -154,6 +155,31 @@ class ScenarioModerationTest {
 
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM scenario WHERE published=TRUE", Integer.class))
                 .isEqualTo(before);
+    }
+
+    @Test
+    void editedCandidateRunsAutomaticScreeningAgain() throws Exception {
+        when(generator.generate(anyInt(), anyString())).thenReturn(List.of(goodDraft(
+                "Команда проектирует новый процесс и хочет заранее найти действия, которые гарантированно разрушат полезный результат.")));
+        UUID id = UUID.fromString(generateOne().path("id").asText());
+
+        mvc.perform(put("/api/admin/scenario-candidates/{id}", id)
+                        .with(user("queue-admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(new Object() {
+                            public final int expectedVersion = 1;
+                            public final ScenarioDraft draft = new ScenarioDraft(
+                                    "INVERSION", "REFRAMING", "L2", "ПРОДУКТ",
+                                    "Команда проектирует новый процесс, но редактор смешал две главные техники и сделал категорию неоднозначной.",
+                                    "Какие три действия гарантированно приведут процесс к провалу?",
+                                    "Найдите причинные механизмы нежелательного исхода.",
+                                    List.of("INVERSION", "HYPERBOLE", "REFRAMING", "SIMPLIFICATION"),
+                                    "INVERSION", "Вопрос меняет направление цели и исследует провал.", null, null);
+                        })))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("AUTO_REJECTED"))
+                .andExpect(jsonPath("$.version").value(2))
+                .andExpect(jsonPath("$.rejectionReasons[0]").value("MULTIPLE_TECHNIQUES"));
     }
 
     private JsonNode generateOne() throws Exception {
