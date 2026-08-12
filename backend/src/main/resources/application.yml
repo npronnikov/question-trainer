@@ -1,6 +1,13 @@
 server:
   port: 8080
   shutdown: graceful
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: ${SESSION_COOKIE_SECURE:false}
+      timeout: 30d
 
 spring:
   application:
