@@ -30,10 +30,12 @@ public class AcpGateway {
 
     private final AppProperties properties;
     private final WorkspaceAccess workspace;
+    private final AcpAvailability availability;
 
-    public AcpGateway(AppProperties properties, WorkspaceAccess workspace) {
+    public AcpGateway(AppProperties properties, WorkspaceAccess workspace, AcpAvailability availability) {
         this.properties = properties;
         this.workspace = workspace;
+        this.availability = availability;
     }
 
     public String ask(String prompt, String model, Consumer<String> onChunk) {
@@ -84,12 +86,16 @@ public class AcpGateway {
             client.prompt(new PromptRequest(session.sessionId(), List.of(new TextContent(prompt))));
         } catch (RuntimeException error) {
             log.warn("ACP agent failed: {}", error.toString());
+            availability.recordFailure(error);
             throw error;
         }
 
         if (chunks.isEmpty()) {
-            throw new IllegalStateException("ACP-агент завершил ход без текстового ответа");
+            var error = new IllegalStateException("ACP-агент завершил ход без текстового ответа");
+            availability.recordFailure(error);
+            throw error;
         }
+        availability.recordSuccess();
         return chunks.toString();
     }
 
@@ -111,6 +117,14 @@ public class AcpGateway {
 
     public boolean enabled() {
         return properties.acp().enabled();
+    }
+
+    public boolean available() {
+        return availability.available();
+    }
+
+    public String unavailabilityReason() {
+        return availability.reason();
     }
 
     public String commandDescription() {

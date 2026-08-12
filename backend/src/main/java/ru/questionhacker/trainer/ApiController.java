@@ -45,7 +45,9 @@ public class ApiController {
     public SystemStatus status() {
         return new SystemStatus(
                 acp.enabled(),
+                acp.available(),
                 properties.acp().fallbackEnabled(),
+                acp.unavailabilityReason(),
                 acp.commandDescription(),
                 properties.acp().models(),
                 properties.acp().defaultModel(),
@@ -95,7 +97,8 @@ public class ApiController {
     public record RunResponse(UUID runId) {
     }
 
-    public record SystemStatus(boolean acpEnabled, boolean fallbackEnabled, String agentCommand,
+    public record SystemStatus(boolean acpEnabled, boolean acpAvailable,
+                               boolean fallbackEnabled, String acpReason, String agentCommand,
                                List<String> models, String defaultModel,
                                String database, String curriculum) {
     }
