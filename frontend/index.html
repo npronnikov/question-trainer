@@ -115,18 +115,22 @@
           </div>
           <p class="trainer-recommendation" id="progress-recommendation" role="status">Загружаем рекомендацию…</p>
           <div class="training-stage">
-            <article class="trainer-card" id="trainer-card" aria-busy="true">
-              <div class="card-label"><span>СИТУАЦИЯ</span><small id="scenario-domain">—</small></div>
-              <p class="scenario-text" id="scenario-text">Загружаем карточку…</p>
-              <blockquote id="scenario-question"></blockquote>
-              <fieldset class="answer-fieldset" id="answer-fieldset">
-                <legend>Основная категория</legend>
-                <div class="answer-grid" id="answer-grid"></div>
-              </fieldset>
-              <label class="rationale-field" for="trainer-rationale"><span>Почему это эта категория?</span><textarea id="trainer-rationale" rows="3" minlength="20" maxlength="2000" placeholder="Опишите операцию, которую вопрос совершает над рамкой" required></textarea></label>
-              <div class="trainer-submit"><span id="trainer-error" role="alert"></span><button class="primary-button" id="submit-trainer" type="button">Проверить на сервере <span>→</span></button></div>
-            </article>
-            <article class="trainer-feedback is-hidden" id="trainer-feedback" role="status" aria-live="polite" tabindex="-1"></article>
+            <div class="trainer-card" id="trainer-card" aria-busy="true">
+              <div class="trainer-card-inner">
+                <article class="trainer-face trainer-card-front" id="trainer-front" aria-hidden="false">
+                  <div class="card-label"><span>СИТУАЦИЯ</span><small id="scenario-domain">—</small></div>
+                  <p class="scenario-text" id="scenario-text" tabindex="-1">Загружаем карточку…</p>
+                  <blockquote id="scenario-question"></blockquote>
+                  <fieldset class="answer-fieldset" id="answer-fieldset">
+                    <legend>Основная категория</legend>
+                    <div class="answer-grid" id="answer-grid"></div>
+                  </fieldset>
+                  <label class="rationale-field" for="trainer-rationale"><span>Почему это эта категория?</span><textarea id="trainer-rationale" rows="3" minlength="20" maxlength="2000" placeholder="Опишите операцию, которую вопрос совершает над рамкой" required></textarea></label>
+                  <div class="trainer-submit"><span id="trainer-error" role="alert"></span><button class="primary-button" id="submit-trainer" type="button">Проверить на сервере <span>→</span></button></div>
+                </article>
+                <article class="trainer-face trainer-card-back" id="trainer-feedback" role="status" aria-live="polite" aria-hidden="true" tabindex="-1" inert></article>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -150,18 +154,31 @@
           </aside>
           <section class="chat-main">
             <header class="chat-header">
-              <div class="chat-title-block"><p class="eyebrow">ВОПРОС → ОТВЕТ → РАССУЖДЕНИЕ → РЕШЕНИЕ</p><h1 id="chat-title">Практика полного цикла</h1></div>
-              <div class="chat-actions"><label class="model-picker" for="model-select"><span>Модель</span><select id="model-select" disabled><option>—</option></select></label><button class="secondary-button" id="new-practice" type="button">Новая ситуация</button></div>
+              <div class="chat-title-block"><h1 id="chat-title">Практика полного цикла</h1></div>
+              <div class="chat-actions">
+                <div class="model-picker" id="model-picker">
+                  <span class="model-picker-label">Модель</span>
+                  <button class="model-trigger" id="model-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="model-popover" disabled>
+                    <span class="model-mark" id="model-mark">—</span>
+                    <span class="model-copy"><strong id="model-name">Модель недоступна</strong><small id="model-detail">Нет доступных моделей</small></span>
+                    <span class="model-chevron" aria-hidden="true">⌄</span>
+                  </button>
+                  <div class="model-popover" id="model-popover" role="listbox" aria-label="Модель коуча" hidden></div>
+                  <select id="model-select" aria-hidden="true" tabindex="-1" hidden disabled><option>—</option></select>
+                </div>
+                <button class="secondary-button" id="new-practice" type="button">Новая ситуация</button>
+              </div>
             </header>
 
             <div class="practice-panel" id="practice-panel">
               <div class="practice-empty" id="practice-empty">
                 <span class="practice-number">04</span><h2>Пройдите полный<br>ход мысли.</h2>
+                <div class="practice-progress practice-progress-intro" aria-label="Полный ход мысли"><span class="is-active">Вопрос</span><span>Ответ</span><span>Рассуждение</span><span>Решение</span></div>
                 <p>Сервер проверит, заполнены ли все шаги, попал ли вопрос в заданную категорию и насколько он силён внутри неё.</p>
                 <button class="primary-button" id="start-practice" type="button">Получить ситуацию <span>→</span></button>
               </div>
               <article class="practice-workspace is-hidden" id="practice-workspace">
-                <div class="practice-progress" aria-label="Этапы практики"><span>Вопрос</span><span>Ответ</span><span>Рассуждение</span><span>Решение</span></div>
+                <div class="practice-progress" id="practice-workspace-progress" aria-label="Этапы практики"><span>Вопрос</span><span>Ответ</span><span>Рассуждение</span><span>Решение</span></div>
                 <div class="practice-situation"><span class="eyebrow" id="practice-domain">СИТУАЦИЯ</span><h2 id="practice-situation"></h2><p id="practice-guidance"></p></div>
                 <form class="practice-form" id="practice-form" novalidate>
                   <label for="practice-question"><span>1. Вопрос</span></label><textarea id="practice-question" rows="3" maxlength="1800" required placeholder="Какой вопрос изменит исходную рамку?"></textarea>

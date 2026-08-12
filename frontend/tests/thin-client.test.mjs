@@ -77,3 +77,69 @@ test('lower ACP card opens an accessible diagnostic dialog', async () => {
   assert.match(app, /status\.acpAvailable/);
   assert.match(app, /#agent-status-card[\s\S]*showModal/);
 });
+
+test('coach thought rail lives inside the practice introduction', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const header = html.match(/<header class="chat-header">[\s\S]*?<\/header>/)?.[0] || '';
+  const empty = html.match(/<div class="practice-empty"[\s\S]*?<\/div>\s*<article class="practice-workspace/)?.[0] || '';
+
+  assert.doesNotMatch(header, /ВОПРОС → ОТВЕТ → РАССУЖДЕНИЕ → РЕШЕНИЕ/);
+  assert.match(empty, /class="practice-progress practice-progress-intro"/);
+  for (const label of ['Вопрос', 'Ответ', 'Рассуждение', 'Решение']) {
+    assert.match(empty, new RegExp(label));
+  }
+});
+
+test('coach model picker is an accessible custom popover', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(html, /id="model-trigger"[^>]*aria-haspopup="listbox"[^>]*aria-expanded="false"/);
+  assert.match(html, /id="model-popover"[^>]*role="listbox"[^>]*hidden/);
+  assert.match(html, /id="model-select"[^>]*hidden/);
+  assert.match(app, /ArrowDown|ArrowUp/);
+  assert.match(app, /Escape/);
+  assert.match(app, /closeModelPicker/);
+});
+
+test('trainer feedback is the inert back face of one flippable card', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+  const css = await fs.readFile(new URL('styles.css', frontend), 'utf8');
+
+  assert.match(html, /id="trainer-card"[\s\S]*class="trainer-card-inner"[\s\S]*id="trainer-front"[\s\S]*id="trainer-feedback"[^>]*aria-hidden="true"[^>]*inert/);
+  assert.match(app, /classList\.toggle\('is-flipped'/);
+  assert.match(app, /\.inert\s*=/);
+  assert.match(css, /\.trainer-card\.is-flipped\s+\.trainer-card-inner/);
+  assert.match(css, /prefers-reduced-motion:\s*reduce[\s\S]*\.trainer-card-inner/);
+});
+
+test('loading the next trainer card restores the front submit control', async () => {
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(app, /function renderTrainerCard[\s\S]*setBusy\(\$\('#submit-trainer'\), false, 'Проверить на сервере →'\)/);
+});
+
+test('practice progress updates only the active form rail', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(html, /id="practice-workspace-progress"[^>]*aria-label="Этапы практики"/);
+  assert.match(app, /\$\$\('#practice-workspace-progress span'\)/);
+  assert.doesNotMatch(app, /\$\$\('\.practice-progress span'\)/);
+});
+
+test('trainer loads ignore stale responses and clear controls on failure', async () => {
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(app, /trainerLoadSequence/);
+  assert.match(app, /if \(sequence !== trainerLoadSequence\) return/);
+  assert.match(app, /function renderTrainerLoadError/);
+});
+
+test('model popover closes when keyboard focus leaves the picker', async () => {
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(app, /addEventListener\('focusout'/);
+  assert.match(app, /document\.activeElement/);
+});

@@ -23,7 +23,9 @@
   let trainerIssuance = null;
   let trainerSelection = null;
   let trainerFeedback = null;
+  let trainerLoadSequence = 0;
   let selectedModel = null;
+  let availableModels = [];
   let coachMode = 'practice';
   let currentSessionId = null;
   let sending = false;
@@ -63,6 +65,7 @@
     const admin = currentUser?.roles?.includes('ADMIN');
     const allowed = admin ? ['theory', 'trainer', 'coach', 'moderation'] : ['theory', 'trainer', 'coach'];
     const route = allowed.includes(rawRoute) ? rawRoute : 'theory';
+    closeModelPicker();
     $$('.view').forEach(view => view.classList.toggle('is-active', view.dataset.view === route));
     $$('.nav-link').forEach(link => link.classList.toggle('is-active', link.dataset.route === route));
     if (pushHash && location.hash !== `#${route}`) history.pushState(null, '', `#${route}`);
@@ -136,25 +139,81 @@
       ${category.contrasts?.length ? `<section class="contrast-list"><h3>Не перепутать</h3>${category.contrasts.map(item => `<p><strong>${escapeHtml(item.otherName)}:</strong> ${escapeHtml(item.text)}</p>`).join('')}</section>` : ''}`;
   }
 
+  function setTrainerFace(flipped) {
+    const card = $('#trainer-card');
+    const front = $('#trainer-front');
+    const back = $('#trainer-feedback');
+    card.classList.toggle('is-flipped', flipped);
+    front.setAttribute('aria-hidden', String(flipped));
+    back.setAttribute('aria-hidden', String(!flipped));
+    front.inert = flipped;
+    back.inert = !flipped;
+  }
+
+  function waitForTrainerTurn() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return Promise.resolve();
+    }
+    return new Promise(resolve => {
+      const inner = $('.trainer-card-inner');
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(fallback);
+        resolve();
+      };
+      const fallback = window.setTimeout(finish, 700);
+      inner.addEventListener('transitionend', finish, { once: true });
+    });
+  }
+
   async function loadTrainerCard() {
     const card = $('#trainer-card');
     const difficulty = $('#difficulty-select').value;
+    const sequence = ++trainerLoadSequence;
+    $('#difficulty-select').disabled = true;
+    $('#next-card')?.setAttribute('disabled', '');
+    if (card.classList.contains('is-flipped')) {
+      setTrainerFace(false);
+      await waitForTrainerTurn();
+      if (sequence !== trainerLoadSequence) return;
+    }
     card.setAttribute('aria-busy', 'true');
     $('#trainer-error').textContent = '';
-    $('#trainer-feedback').classList.add('is-hidden');
+    $('#trainer-feedback').innerHTML = '';
     trainerFeedback = null;
     trainerSelection = null;
     try {
       const suffix = difficulty ? `?difficulty=${encodeURIComponent(difficulty)}` : '';
-      trainerIssuance = await api(`/trainer/next${suffix}`);
+      const issuance = await api(`/trainer/next${suffix}`);
+      if (sequence !== trainerLoadSequence) return;
+      trainerIssuance = issuance;
       renderTrainerCard(trainerIssuance.card);
+      $('#scenario-text').focus({ preventScroll: true });
     } catch (error) {
-      trainerIssuance = null;
-      $('#scenario-text').textContent = error.message;
-      $('#answer-grid').innerHTML = '';
+      if (sequence !== trainerLoadSequence) return;
+      renderTrainerLoadError(error);
     } finally {
-      card.setAttribute('aria-busy', 'false');
+      if (sequence === trainerLoadSequence) {
+        card.setAttribute('aria-busy', 'false');
+        $('#difficulty-select').disabled = false;
+      }
     }
+  }
+
+  function renderTrainerLoadError(error) {
+    trainerIssuance = null;
+    $('#scenario-domain').textContent = '—';
+    $('#scenario-text').textContent = error.message;
+    $('#scenario-question').textContent = '';
+    $('#answer-grid').innerHTML = '';
+    $('#trainer-rationale').value = '';
+    $('#answer-fieldset').disabled = true;
+    $('#trainer-rationale').disabled = true;
+    setBusy($('#submit-trainer'), false, 'Проверить на сервере →');
+    $('#submit-trainer').disabled = true;
+    $('#card-counter').textContent = 'Карточка недоступна';
   }
 
   function renderTrainerCard(card) {
@@ -175,7 +234,7 @@
     }));
     $('#answer-fieldset').disabled = false;
     $('#trainer-rationale').disabled = false;
-    $('#submit-trainer').disabled = false;
+    setBusy($('#submit-trainer'), false, 'Проверить на сервере →');
     $('#card-counter').textContent = `Срок ответа: ${formatTime(trainerIssuance.expiresAt)}`;
   }
 
@@ -210,12 +269,11 @@
   function renderTrainerFeedback(value) {
     const category = categories.find(item => item.code === value.correctCategory);
     const panel = $('#trainer-feedback');
-    panel.classList.remove('is-hidden');
     panel.classList.toggle('passed', value.correct);
     panel.innerHTML = `
       <div class="feedback-verdict">${value.correct ? 'Верно' : 'Нужно различить'} · ${escapeHtml(category?.name || value.correctCategory)}</div>
       <div class="feedback-score">${Math.round(value.mastery.score)}<small>/ 100</small></div>
-      <h3>${value.correct ? 'Операция распознана.' : 'Категория определяется операцией вопроса.'}</h3>
+      <h3 id="trainer-result-title" tabindex="-1">${value.correct ? 'Операция распознана.' : 'Категория определяется операцией вопроса.'}</h3>
       <p>${escapeHtml(value.operationExplanation)}</p>
       <div class="feedback-next"><strong>Контраст</strong><span>${escapeHtml(value.contrast)}</span></div>
       <div class="feedback-next"><strong>Следующий шаг</strong><span>${escapeHtml(value.nextStep)}</span></div>
@@ -227,8 +285,8 @@
       loadTheoryDetail(currentTheoryCode);
       setRoute('theory');
     });
-    panel.focus({ preventScroll: true });
-    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setTrainerFace(true);
+    $('#trainer-result-title').focus({ preventScroll: true });
   }
 
   async function refreshProgressView() {
@@ -255,6 +313,126 @@
     $('#difficulty-select').addEventListener('change', loadTrainerCard);
   }
 
+  function modelPresentation(model) {
+    const match = String(model || '').match(/^(.+?)(?:\[(x?high)\])?$/i);
+    const rawFamily = match?.[1] || 'Модель';
+    const reasoning = match?.[2]?.toLowerCase();
+    const words = rawFamily.split('-');
+    const family = rawFamily
+      .replace(/^gpt-/i, 'GPT-')
+      .replace(/-([a-z])/gi, (_, letter) => ` ${letter.toUpperCase()}`);
+    return {
+      family,
+      mark: words.at(-1)?.charAt(0).toUpperCase() || '?',
+      detail: reasoning === 'xhigh'
+        ? 'Extra high · максимум анализа'
+        : reasoning === 'high' ? 'High · сбалансировано' : 'Стандартный режим'
+    };
+  }
+
+  function renderModelPicker() {
+    const trigger = $('#model-trigger');
+    const popover = $('#model-popover');
+    const presentation = modelPresentation(selectedModel);
+    trigger.disabled = !availableModels.length;
+    $('#model-mark').textContent = availableModels.length ? presentation.mark : '—';
+    $('#model-name').textContent = availableModels.length ? presentation.family : 'Модель недоступна';
+    $('#model-detail').textContent = availableModels.length ? presentation.detail : 'Нет доступных моделей';
+    popover.innerHTML = availableModels.map(model => {
+      const option = modelPresentation(model);
+      const selected = model === selectedModel;
+      return `<button class="model-option${selected ? ' is-selected' : ''}" type="button" role="option" aria-selected="${selected}" tabindex="${selected ? '0' : '-1'}" data-model="${escapeHtml(model)}">
+        <span class="model-mark">${escapeHtml(option.mark)}</span><span class="model-copy"><strong>${escapeHtml(option.family)}</strong><small>${escapeHtml(option.detail)}</small></span><span class="model-check" aria-hidden="true">${selected ? '✓' : ''}</span>
+      </button>`;
+    }).join('');
+    $$('.model-option', popover).forEach(option => {
+      option.addEventListener('click', () => {
+        setSelectedModel(option.dataset.model);
+        closeModelPicker({ restoreFocus: true });
+      });
+      option.addEventListener('keydown', handleModelOptionKeydown);
+    });
+  }
+
+  function setSelectedModel(model) {
+    selectedModel = model || null;
+    $('#model-select').value = selectedModel || '';
+    renderModelPicker();
+  }
+
+  function openModelPicker(focusIndex = null) {
+    if (!availableModels.length) return;
+    const trigger = $('#model-trigger');
+    const popover = $('#model-popover');
+    popover.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    $('#model-picker').classList.add('is-open');
+    const selectedIndex = Math.max(0, availableModels.indexOf(selectedModel));
+    focusModelOption(focusIndex == null ? selectedIndex : focusIndex);
+  }
+
+  function closeModelPicker({ restoreFocus = false } = {}) {
+    const trigger = $('#model-trigger');
+    const popover = $('#model-popover');
+    if (!trigger || !popover) return;
+    popover.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    $('#model-picker')?.classList.remove('is-open');
+    if (restoreFocus) trigger.focus();
+  }
+
+  function moveModelFocus(currentIndex, delta) {
+    const options = $$('.model-option', $('#model-popover'));
+    if (!options.length) return;
+    focusModelOption((currentIndex + delta + options.length) % options.length);
+  }
+
+  function focusModelOption(index) {
+    const options = $$('.model-option', $('#model-popover'));
+    if (!options.length) return;
+    const target = Math.max(0, Math.min(options.length - 1, index));
+    options.forEach((option, optionIndex) => { option.tabIndex = optionIndex === target ? 0 : -1; });
+    options[target].focus();
+  }
+
+  function handleModelOptionKeydown(event) {
+    const options = $$('.model-option', $('#model-popover'));
+    const index = options.indexOf(event.currentTarget);
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      moveModelFocus(index, event.key === 'ArrowDown' ? 1 : -1);
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      focusModelOption(event.key === 'Home' ? 0 : options.length - 1);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      closeModelPicker({ restoreFocus: true });
+    }
+  }
+
+  function bindModelPicker() {
+    $('#model-trigger').addEventListener('click', () => {
+      if ($('#model-popover').hidden) openModelPicker(); else closeModelPicker();
+    });
+    $('#model-trigger').addEventListener('keydown', event => {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const selectedIndex = Math.max(0, availableModels.indexOf(selectedModel));
+        openModelPicker(event.key === 'ArrowDown' ? selectedIndex : Math.max(0, availableModels.length - 1));
+      } else if (event.key === 'Escape') {
+        closeModelPicker();
+      }
+    });
+    document.addEventListener('click', event => {
+      if (!$('#model-picker').contains(event.target)) closeModelPicker();
+    });
+    $('#model-picker').addEventListener('focusout', () => {
+      window.setTimeout(() => {
+        if (!$('#model-picker').contains(document.activeElement)) closeModelPicker();
+      }, 0);
+    });
+  }
+
   async function loadSystemStatus() {
     try {
       const status = await api('/system/status');
@@ -268,11 +446,10 @@
       $('#agent-dot').classList.toggle('fallback', !online && status.fallbackEnabled);
       $('#agent-status').textContent = online ? 'Семантическая оценка доступна.' : 'Ответы коуча работают через fallback; оценка может стать непроверенной.';
       $('#agent-command').textContent = status.agentCommand || '—';
-      const models = (status.models || []).slice(0, 3);
-      selectedModel = models.includes(status.defaultModel) ? status.defaultModel : models[0] || null;
-      $('#model-select').innerHTML = models.map(model => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`).join('');
-      $('#model-select').value = selectedModel || '';
-      $('#model-select').disabled = !models.length;
+      availableModels = (status.models || []).slice(0, 3);
+      $('#model-select').innerHTML = availableModels.map(model => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`).join('');
+      $('#model-select').disabled = !availableModels.length;
+      setSelectedModel(availableModels.includes(status.defaultModel) ? status.defaultModel : availableModels[0] || null);
     } catch (error) {
       systemStatus = null;
       systemStatusError = error.message;
@@ -281,6 +458,8 @@
       $('#connection-label').textContent = 'сервер недоступен';
       $('#agent-status').textContent = error.message;
       $('#agent-command').textContent = '—';
+      availableModels = [];
+      setSelectedModel(null);
     }
   }
 
@@ -459,7 +638,7 @@
 
   function updatePracticeProgress(evaluating = false, passed = false) {
     const values = practiceValues();
-    $$('.practice-progress span').forEach((item, index) => {
+    $$('#practice-workspace-progress span').forEach((item, index) => {
       const field = Object.keys(FIELD_LABELS)[index];
       item.classList.toggle('is-active', passed || evaluating || values[field]?.length > 0);
     });
@@ -761,6 +940,7 @@
     bindChat();
     bindModeration();
     bindAcpStatus();
+    bindModelPicker();
     await Promise.allSettled([loadCurriculum(), refreshProgressView(), loadSystemStatus()]);
     setCoachMode('practice');
     setRoute(location.hash.slice(1) || 'theory', false);
