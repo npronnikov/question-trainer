@@ -6,3 +6,4 @@ backend/data/
 .env
 .DS_Store
 .superpowers/
+.worktrees/
