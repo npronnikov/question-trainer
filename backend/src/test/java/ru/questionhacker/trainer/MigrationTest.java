@@ -31,4 +31,26 @@ class MigrationTest {
 
         assertThat(count).isEqualTo(4);
     }
+
+    @Test
+    void flywayCreatesCurriculumAndTrainerTables() {
+        Integer count = jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE UPPER(TABLE_NAME) IN (
+                  'CATEGORY',
+                  'EVIDENCE_SOURCE',
+                  'THEORY_SECTION',
+                  'CATEGORY_CONTRAST',
+                  'SCENARIO',
+                  'SCENARIO_OPTION',
+                  'TRAINER_ISSUANCE',
+                  'TRAINER_ATTEMPT',
+                  'CATEGORY_MASTERY',
+                  'CATEGORY_CONFUSION'
+                )
+                """, Integer.class);
+
+        assertThat(count).isEqualTo(10);
+    }
 }
