@@ -165,5 +165,15 @@ test('practice and coach are independent hash routes', async () => {
 test('route split invalidates the offline shell cache', async () => {
   const serviceWorker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
 
-  assert.match(serviceWorker, /const CACHE = 'question-hacker-v9';/);
+  assert.match(serviceWorker, /const CACHE = 'question-hacker-v10';/);
+});
+
+test('boot activates the hash route before background API hydration', async () => {
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+  const routeActivation = app.lastIndexOf("setRoute(location.hash.slice(1) || 'theory', false);");
+  const backgroundHydration = app.lastIndexOf('await Promise.allSettled([loadCurriculum(), refreshProgressView(), loadSystemStatus()]);');
+
+  assert.ok(routeActivation > -1);
+  assert.ok(backgroundHydration > -1);
+  assert.ok(routeActivation < backgroundHydration);
 });

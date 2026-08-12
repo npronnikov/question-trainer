@@ -955,8 +955,8 @@
     bindModeration();
     bindAcpStatus();
     bindModelPicker();
-    await Promise.allSettled([loadCurriculum(), refreshProgressView(), loadSystemStatus()]);
     setRoute(location.hash.slice(1) || 'theory', false);
+    await Promise.allSettled([loadCurriculum(), refreshProgressView(), loadSystemStatus()]);
     if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 
