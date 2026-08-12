@@ -48,6 +48,10 @@ app:
   chat:
     max-message-chars: 12000
     history-limit: 24
+  admin:
+    username: ${APP_ADMIN_USERNAME:}
+    password: ${APP_ADMIN_PASSWORD:}
+    email: ${APP_ADMIN_EMAIL:}
 
 logging:
   level:

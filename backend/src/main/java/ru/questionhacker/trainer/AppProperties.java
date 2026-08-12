@@ -6,7 +6,7 @@ import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "app")
-public record AppProperties(Acp acp, Chat chat) {
+public record AppProperties(Acp acp, Chat chat, Admin admin) {
 
     public record Acp(
             boolean enabled,
@@ -22,5 +22,8 @@ public record AppProperties(Acp acp, Chat chat) {
     }
 
     public record Chat(int maxMessageChars, int historyLimit) {
+    }
+
+    public record Admin(String username, String password, String email) {
     }
 }
