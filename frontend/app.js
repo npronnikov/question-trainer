@@ -4,6 +4,9 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const TERMINAL_ATTEMPT_STATUSES = new Set(['PASSED', 'NEEDS_REVISION', 'UNVERIFIED']);
+  const PRACTICE_ASSIGNMENT_INCOMPLETE = 'PRACTICE_ASSIGNMENT_INCOMPLETE';
+  const PRACTICE_CATALOG_EXHAUSTED = 'PRACTICE_CATALOG_EXHAUSTED';
+  const PRACTICE_EXHAUSTED_MESSAGE = 'Вы прошли все доступные ситуации. Дождитесь, пока администратор добавит новые.';
   const FIELD_LABELS = { question: 'Вопрос', answer: 'Ответ', reasoning: 'Рассуждение', solution: 'Решение' };
   const STATUS_LABELS = {
     PENDING_REVIEW: 'На проверке', AUTO_REJECTED: 'Автоотказ',
@@ -49,6 +52,7 @@
   let practiceDraftDirty = false;
   let practiceEditorBaseAttemptId = null;
   let practiceSubmitting = false;
+  let practiceAvailabilityCode = null;
   let moderationStatus = 'PENDING_REVIEW';
   let moderationRows = [];
   let selectedCandidate = null;
@@ -623,6 +627,31 @@
       button.setAttribute('aria-current', String(active));
       button.addEventListener('click', () => selectPracticeCycle(button.dataset.practiceCycle));
     });
+    syncPracticeAvailability();
+  }
+
+  function setPracticeAvailability(code, message = '') {
+    practiceAvailabilityCode = code;
+    const region = $('#practice-availability');
+    region.dataset.code = code || '';
+    region.textContent = message;
+  }
+
+  function syncPracticeAvailability() {
+    const unfinished = practiceCycles.find(cycle => cycle.status !== 'PASSED');
+    if (unfinished) {
+      setPracticeAvailability(
+        PRACTICE_ASSIGNMENT_INCOMPLETE,
+        'Сначала завершите текущую ситуацию и получите зачёт.'
+      );
+    } else if (practiceAvailabilityCode === PRACTICE_ASSIGNMENT_INCOMPLETE) {
+      setPracticeAvailability(null);
+    }
+    [$('#start-practice'), $('#new-practice')].forEach(button => {
+      if (!button) return;
+      button.disabled = practiceSubmitting || Boolean(unfinished);
+      button.title = unfinished ? 'Сначала завершите текущую ситуацию и получите зачёт.' : '';
+    });
   }
 
   function practiceStatusLabel(status) {
@@ -655,15 +684,25 @@
       await flushPracticeDraft();
       clearAttemptPoll();
       const assignment = await api('/practice/assignments', { method: 'POST', body: '{}' });
+      setPracticeAvailability(null);
       await loadPracticeCycles();
       await selectPracticeCycle(assignment.assignmentId, { skipFlush: true });
       $('#practice-question').focus();
     } catch (error) {
-      showToast(error.message);
+      const code = error.problem?.code;
+      if (code === PRACTICE_ASSIGNMENT_INCOMPLETE) {
+        setPracticeAvailability(code, error.message);
+        await loadPracticeCycles();
+      } else if (code === PRACTICE_CATALOG_EXHAUSTED) {
+        setPracticeAvailability(code, error.message || PRACTICE_EXHAUSTED_MESSAGE);
+      } else {
+        showToast(error.message);
+      }
     } finally {
       buttons.forEach(button => setBusy(button, false));
       $('#new-practice').textContent = '＋ Новая ситуация';
       $('#start-practice').innerHTML = 'Получить ситуацию <span>→</span>';
+      syncPracticeAvailability();
     }
   }
 
@@ -870,6 +909,7 @@
 
   function renderPracticeFeedback(attempt, focus = true) {
     practiceSubmitting = false;
+    syncPracticeAvailability();
     const assessment = attempt.assessment;
     const passed = attempt.status === 'PASSED';
     const unverified = attempt.status === 'UNVERIFIED';

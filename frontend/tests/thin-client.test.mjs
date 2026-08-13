@@ -187,6 +187,19 @@ test('practice locks submitted values and guards duplicate mutations', async () 
   assert.match(app, /buttons\.some\(button => button\.disabled\)/);
 });
 
+test('practice gates new assignments until PASSED and explains catalog exhaustion', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(html, /id="practice-availability"[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.match(app, /PRACTICE_ASSIGNMENT_INCOMPLETE/);
+  assert.match(app, /PRACTICE_CATALOG_EXHAUSTED/);
+  assert.match(app, /practiceCycles\.find\(cycle => cycle\.status !== 'PASSED'\)/);
+  assert.match(app, /function syncPracticeAvailability/);
+  assert.match(app, /error\.problem\?\.code/);
+  assert.match(app, /Вы прошли все доступные ситуации\. Дождитесь, пока администратор добавит новые\./);
+});
+
 test('trainer loads ignore stale responses and clear controls on failure', async () => {
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
 
@@ -250,7 +263,7 @@ test('practice omits the overview action and redundant labels', async () => {
 test('practice history invalidates the offline shell cache', async () => {
   const serviceWorker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
 
-  assert.match(serviceWorker, /const CACHE = 'question-hacker-v13';/);
+  assert.match(serviceWorker, /const CACHE = 'question-hacker-v14';/);
 });
 
 test('boot activates the hash route before background API hydration', async () => {

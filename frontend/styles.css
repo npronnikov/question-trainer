@@ -313,10 +313,13 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visib
 .chat-sidebar { min-height: calc(100vh - 78px); padding: 28px 18px; display: flex; flex-direction: column; background: var(--ink); color: var(--paper); border-right: 1px solid var(--white-line); }
 .sidebar-head { display: flex; justify-content: space-between; align-items: center; padding: 0 8px 24px; }
 .sidebar-head h2 { margin: 7px 0 0; font-size: 28px; }
-.practice-history-tools { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; margin-bottom: 18px; }
+.practice-history-tools { min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 12px; margin-bottom: 18px; }
 .practice-history-actions { display: grid; grid-template-columns: 1fr; gap: 7px; }
 .practice-history-actions .secondary-button { color: var(--paper); border-color: var(--white-line); font-size: 11px; }
 .practice-history-actions .secondary-button:hover { color: var(--ink); }
+.practice-history-actions .secondary-button:disabled { color: #96988f; border-color: var(--white-line); opacity: .65; cursor: not-allowed; transform: none; }
+.practice-availability { min-height: 0; margin: 0 4px; color: #c4c6bd; font-size: 11px; line-height: 1.45; }
+.practice-availability:empty { display: none; }
 .practice-cycle-list { min-height: 0; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
 .practice-cycle-row { width: 100%; display: grid; gap: 7px; padding: 13px; border: 1px solid var(--white-line); border-radius: 13px; background: transparent; color: #c4c6bd; text-align: left; cursor: pointer; }
 .practice-cycle-row:hover, .practice-cycle-row:focus-visible { background: rgba(255,255,255,.07); color: white; }
