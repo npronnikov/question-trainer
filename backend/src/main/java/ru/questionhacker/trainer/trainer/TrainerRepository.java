@@ -27,7 +27,7 @@ public class TrainerRepository {
                        s.situation_text, s.question_text, s.explanation_text,
                        s.confused_with, s.contrast_explanation
                 FROM scenario s
-                WHERE s.published=TRUE
+                WHERE s.published=TRUE AND s.content_target='TRAINER'
                 """ + difficultyClause + """
                 ORDER BY CASE WHEN EXISTS (
                   SELECT 1 FROM trainer_issuance ti
@@ -51,7 +51,7 @@ public class TrainerRepository {
                 FROM scenario s
                 LEFT JOIN category_mastery cm
                   ON cm.owner_id=? AND cm.category_code=s.category_code
-                WHERE s.published=TRUE
+                WHERE s.published=TRUE AND s.content_target='TRAINER'
                 """ + difficultyClause + """
                 ORDER BY
                   CASE WHEN EXISTS (
@@ -101,7 +101,7 @@ public class TrainerRepository {
                 FROM scenario s
                 JOIN category_mastery cm
                   ON cm.owner_id=? AND cm.category_code=s.category_code
-                WHERE s.published=TRUE
+                WHERE s.published=TRUE AND s.content_target='TRAINER'
                   AND (cm.next_review_at IS NULL OR cm.next_review_at <= CURRENT_TIMESTAMP)
                 """ + difficultyClause + """
                 ORDER BY
@@ -133,7 +133,7 @@ public class TrainerRepository {
                        s.situation_text, s.question_text, s.explanation_text,
                        s.confused_with, s.contrast_explanation
                 FROM scenario s
-                WHERE s.published=TRUE AND s.category_code=?
+                WHERE s.published=TRUE AND s.content_target='TRAINER' AND s.category_code=?
                 """ + difficultyClause + """
                 ORDER BY
                   CASE WHEN EXISTS (

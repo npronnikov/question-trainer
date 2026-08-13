@@ -53,10 +53,11 @@ public class PracticeRepository {
     public Optional<AssignmentSource> selectAssignmentSource(UUID ownerId, String targetCategory) {
         return jdbc.query("""
                 SELECT s.id AS scenario_id, s.category_code, c.name,
-                       c.operation_text, c.cue_text, s.domain_text, s.situation_text
+                       c.operation_text, c.cue_text, s.domain_text, s.situation_text,
+                       s.hint_text
                 FROM scenario s
                 JOIN category c ON c.code=s.category_code
-                WHERE s.published=TRUE AND s.category_code=?
+                WHERE s.published=TRUE AND s.content_target='PRACTICE' AND s.category_code=?
                   AND EXISTS (
                     SELECT 1 FROM scenario_candidate candidate
                     WHERE candidate.status='PUBLISHED'
@@ -78,18 +79,18 @@ public class PracticeRepository {
         jdbc.update("""
                 INSERT INTO practice_assignment(
                   id, owner_id, scenario_id, target_category_code, domain_text,
-                  situation_text, guidance_text, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                  situation_text, hint_text, guidance_text, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, id, ownerId, source.scenarioId(), source.categoryCode(), source.domain(),
-                source.situation(), guidance, now);
+                source.situation(), source.hint(), guidance, now);
         return new AssignmentRow(id, ownerId, source.scenarioId(), source.categoryCode(),
-                source.categoryName(), source.domain(), source.situation(), guidance, now);
+                source.categoryName(), source.domain(), source.situation(), source.hint(), guidance, now);
     }
 
     public Optional<AssignmentRow> findAssignment(UUID ownerId, UUID assignmentId) {
         return jdbc.query("""
                 SELECT pa.id, pa.owner_id, pa.scenario_id, pa.target_category_code,
-                       c.name, pa.domain_text, pa.situation_text, pa.guidance_text,
+                       c.name, pa.domain_text, pa.situation_text, pa.hint_text, pa.guidance_text,
                        pa.created_at
                 FROM practice_assignment pa
                 JOIN category c ON c.code=pa.target_category_code
@@ -102,6 +103,7 @@ public class PracticeRepository {
                 rs.getString("name"),
                 rs.getString("domain_text"),
                 rs.getString("situation_text"),
+                rs.getString("hint_text"),
                 rs.getString("guidance_text"),
                 rs.getObject("created_at", OffsetDateTime.class)), ownerId, assignmentId)
                 .stream().findFirst();
@@ -368,7 +370,8 @@ public class PracticeRepository {
                 rs.getString("operation_text"),
                 rs.getString("cue_text"),
                 rs.getString("domain_text"),
-                rs.getString("situation_text"));
+                rs.getString("situation_text"),
+                rs.getString("hint_text"));
     }
 
     public record AssignmentSource(
@@ -378,7 +381,8 @@ public class PracticeRepository {
             String operation,
             String cue,
             String domain,
-            String situation) {
+            String situation,
+            String hint) {
     }
 
     public record AssignmentRow(
@@ -389,6 +393,7 @@ public class PracticeRepository {
             String categoryName,
             String domain,
             String situation,
+            String hint,
             String guidance,
             OffsetDateTime createdAt) {
     }

@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.Set;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -75,5 +76,26 @@ class TrainerIssuanceTest {
                         .param("difficulty", "L9")
                         .with(user("trainer-alice")))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void practiceScenarioWithoutTrainerFieldsIsNeverIssued() throws Exception {
+        UUID scenarioId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO scenario(
+                  id, external_key, content_target, category_code, difficulty, domain_text,
+                  situation_text, question_text, hint_text, explanation_text, content_hash,
+                  published, created_at, updated_at
+                ) VALUES (?, '000-practice-only', 'PRACTICE', 'INVERSION', 'L1', 'ПРОДУКТ',
+                          'Команда обсуждает подробную практическую ситуацию без готового вопроса для тренажёра.',
+                          NULL, 'Подсказка для практики.', NULL, ?, TRUE,
+                          CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, scenarioId, "practice-only-" + scenarioId);
+
+        mvc.perform(get("/api/trainer/next").with(user("trainer-alice")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.card.id").value(org.hamcrest.Matchers.not(scenarioId.toString())))
+                .andExpect(jsonPath("$.card.question").isNotEmpty())
+                .andExpect(jsonPath("$.card.options.length()").value(4));
     }
 }

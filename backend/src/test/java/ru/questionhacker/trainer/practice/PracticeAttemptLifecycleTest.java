@@ -246,10 +246,17 @@ class PracticeAttemptLifecycleTest {
                 ORDER BY external_key LIMIT 1 OFFSET ?
                 """, UUID.class, category, offset);
         jdbc.update("""
+                UPDATE scenario SET content_target='PRACTICE',
+                  hint_text='Посмотрите на ситуацию под другим углом, не называя готовую технику.'
+                WHERE id=?
+                """, scenarioId);
+        jdbc.update("""
                 INSERT INTO scenario_candidate(
-                  id, status, version_number, category_code, rejection_reasons_json,
-                  warnings_json, published_scenario_id, created_at, updated_at
-                ) VALUES (?, 'PUBLISHED', 1, ?, '[]', '[]', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                  id, status, content_target, version_number, category_code,
+                  rejection_reasons_json, warnings_json, published_scenario_id,
+                  created_at, updated_at
+                ) VALUES (?, 'PUBLISHED', 'PRACTICE', 1, ?, '[]', '[]', ?,
+                          CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, UUID.randomUUID(), category, scenarioId);
     }
 

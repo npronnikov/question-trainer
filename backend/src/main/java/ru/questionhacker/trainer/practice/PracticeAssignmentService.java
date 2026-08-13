@@ -50,7 +50,7 @@ public class PracticeAssignmentService {
 
     AssignmentView view(PracticeRepository.AssignmentRow row) {
         return new AssignmentView(
-                row.id(), row.domain(), row.situation(),
+                row.id(), row.domain(), row.situation(), row.hint(),
                 new TargetCategory(row.categoryCode(), row.categoryName(), row.guidance()),
                 row.createdAt());
     }
@@ -59,6 +59,7 @@ public class PracticeAssignmentService {
             UUID assignmentId,
             String domain,
             String situation,
+            String hint,
             TargetCategory targetCategory,
             OffsetDateTime createdAt) {
     }

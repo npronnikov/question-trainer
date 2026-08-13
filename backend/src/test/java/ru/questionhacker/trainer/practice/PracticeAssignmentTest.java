@@ -169,16 +169,65 @@ class PracticeAssignmentTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void assignmentUsesOnlyPracticeScenarioAndSnapshotsItsHint() throws Exception {
+        UUID trainerScenario = jdbc.queryForObject("""
+                SELECT id FROM scenario WHERE category_code='INVERSION' AND published=TRUE
+                ORDER BY external_key LIMIT 1
+                """, UUID.class);
+        jdbc.update("""
+                UPDATE scenario SET content_target='TRAINER', difficulty='L2',
+                  hint_text='Тренажёрная подсказка не должна попасть в практику.'
+                WHERE id=?
+                """, trainerScenario);
+        jdbc.update("""
+                INSERT INTO scenario_candidate(
+                  id, status, content_target, version_number, category_code,
+                  rejection_reasons_json, warnings_json, published_scenario_id,
+                  created_at, updated_at
+                ) VALUES (?, 'PUBLISHED', 'TRAINER', 1, 'INVERSION', '[]', '[]', ?,
+                          CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, UUID.randomUUID(), trainerScenario);
+        UUID practiceScenario = publishForPractice(
+                "INVERSION", 1, "Практическая подсказка сохранена вместе с назначением.");
+        jdbc.update("UPDATE scenario SET difficulty='L1' WHERE id=?", practiceScenario);
+
+        String response = mvc.perform(post("/api/practice/assignments")
+                        .with(user("practice-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.hint").value(
+                        "Практическая подсказка сохранена вместе с назначением."))
+                .andReturn().getResponse().getContentAsString();
+        UUID assignmentId = UUID.fromString(json.readTree(response).path("assignmentId").asText());
+
+        assertThat(jdbc.queryForObject(
+                "SELECT scenario_id FROM practice_assignment WHERE id=?", UUID.class, assignmentId))
+                .isEqualTo(practiceScenario);
+        assertThat(jdbc.queryForObject(
+                "SELECT hint_text FROM practice_assignment WHERE id=?", String.class, assignmentId))
+                .isEqualTo("Практическая подсказка сохранена вместе с назначением.");
+    }
+
     private UUID publishForPractice(String category, int offset) {
+        return publishForPractice(category, offset,
+                "Посмотрите на ситуацию под другим углом, не называя готовую технику.");
+    }
+
+    private UUID publishForPractice(String category, int offset, String hint) {
         UUID scenarioId = jdbc.queryForObject("""
                 SELECT id FROM scenario WHERE category_code=? AND published=TRUE
                 ORDER BY external_key LIMIT 1 OFFSET ?
                 """, UUID.class, category, offset);
+        jdbc.update("UPDATE scenario SET content_target='PRACTICE', hint_text=? WHERE id=?",
+                hint, scenarioId);
         jdbc.update("""
                 INSERT INTO scenario_candidate(
-                  id, status, version_number, category_code, rejection_reasons_json,
-                  warnings_json, published_scenario_id, created_at, updated_at
-                ) VALUES (?, 'PUBLISHED', 1, ?, '[]', '[]', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                  id, status, content_target, version_number, category_code,
+                  rejection_reasons_json, warnings_json, published_scenario_id,
+                  created_at, updated_at
+                ) VALUES (?, 'PUBLISHED', 'PRACTICE', 1, ?, '[]', '[]', ?,
+                          CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, UUID.randomUUID(), category, scenarioId);
         return scenarioId;
     }
