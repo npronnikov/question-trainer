@@ -66,32 +66,82 @@ class ScenarioModerationTest {
     }
 
     @Test
-    void generationScreensBadCasesBeforeReviewQueue() throws Exception {
+    void trainerGenerationCreatesOneCandidateAndScreensItEvenWhenLegacyCountIsSent() throws Exception {
         when(generator.generate(anyList(), anyString())).thenReturn(List.of(
-                goodDraftForSituation("Новая команда готовит запуск сервиса, но согласования скрывают главные риски и откладывают первые проверки."),
                 new ScenarioDraft("INVERSION", "REFRAMING", "L2", "ПРОДУКТ",
                         "Команда обсуждает тупик, но кейс одновременно требует двух главных техник и не имеет однозначной операции.",
-                        "Какие действия приведут запуск к провалу?", "Подумайте об инверсии.",
+                        "Какие действия приведут запуск к провалу?", "Исследуйте нежелательный исход.",
                         List.of("INVERSION", "HYPERBOLE", "REFRAMING", "SIMPLIFICATION"),
-                        "INVERSION", "Объяснение операции инверсии достаточно конкретно.", null, null),
-                goodDraftForSituation("Команда хочет убить клиента и гарантированно причинить ему вред во время проверки продукта.")));
+                        "INVERSION", "Объяснение операции инверсии достаточно конкретно.", null, null)));
 
         mvc.perform(post("/api/admin/scenario-candidates/generate")
                         .with(user("queue-admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"count\":3,\"model\":\"gpt-5.6-terra[high]\"}"))
+                        .content("{\"target\":\"TRAINER\",\"count\":20,\"model\":\"gpt-5.6-terra[high]\"}"))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.length()").value(3))
-                .andExpect(jsonPath("$[0].status").value("PENDING_REVIEW"))
-                .andExpect(jsonPath("$[1].status").value("AUTO_REJECTED"))
-                .andExpect(jsonPath("$[1].rejectionReasons[0]").value("MULTIPLE_TECHNIQUES"))
-                .andExpect(jsonPath("$[2].status").value("AUTO_REJECTED"));
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].target").value("TRAINER"))
+                .andExpect(jsonPath("$[0].status").value("AUTO_REJECTED"))
+                .andExpect(jsonPath("$[0].rejectionReasons[0]").value("MULTIPLE_TECHNIQUES"));
 
         assertThat(jdbc.queryForObject(
-                "SELECT COUNT(*) FROM scenario_candidate WHERE status='PENDING_REVIEW'", Integer.class))
+                "SELECT COUNT(*) FROM scenario_candidate WHERE content_target='TRAINER'", Integer.class))
                 .isEqualTo(1);
         assertThat(jdbc.queryForObject(
-                "SELECT COUNT(*) FROM moderation_action", Integer.class)).isEqualTo(3);
+                "SELECT COUNT(*) FROM moderation_action", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void practiceGenerationStoresServerCategoryAndNoTrainerContent() throws Exception {
+        when(generator.generatePractice(anyString(), anyString())).thenReturn(new PracticeScenarioDraft(
+                "ПРОДУКТ",
+                "Команда готовит новый рабочий процесс, но привычные решения скрывают ограничение и откладывают проверку результата.",
+                "Исследуйте противоположное направление цели, не называя саму технику."));
+
+        mvc.perform(post("/api/admin/scenario-candidates/generate")
+                        .with(user("queue-admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"target\":\"PRACTICE\",\"model\":\"gpt-5.6-terra[high]\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].target").value("PRACTICE"))
+                .andExpect(jsonPath("$[0].category").value("INVERSION"))
+                .andExpect(jsonPath("$[0].domain").value("ПРОДУКТ"))
+                .andExpect(jsonPath("$[0].hint").isNotEmpty())
+                .andExpect(jsonPath("$[0].difficulty").doesNotExist())
+                .andExpect(jsonPath("$[0].question").doesNotExist())
+                .andExpect(jsonPath("$[0].correctCategory").doesNotExist())
+                .andExpect(jsonPath("$[0].explanation").doesNotExist());
+    }
+
+    @Test
+    void practiceGenerationRejectsHintThatNamesTheCategory() throws Exception {
+        when(generator.generatePractice(anyString(), anyString())).thenReturn(new PracticeScenarioDraft(
+                "ПРОДУКТ",
+                "Команда готовит новый рабочий процесс, но привычные решения скрывают ограничение и откладывают проверку результата.",
+                "Используйте инверсию и исследуйте противоположную цель для этой ситуации."));
+
+        mvc.perform(post("/api/admin/scenario-candidates/generate")
+                        .with(user("queue-admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"target\":\"PRACTICE\",\"model\":\"gpt-5.6-terra[high]\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$[0].status").value("AUTO_REJECTED"))
+                .andExpect(jsonPath("$[0].rejectionReasons[0]").value("HINT_LEAKS_ANSWER"));
+    }
+
+    @Test
+    void generationRequiresKnownTarget() throws Exception {
+        mvc.perform(post("/api/admin/scenario-candidates/generate")
+                        .with(user("queue-admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"model\":\"gpt-5.6-terra[high]\"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/admin/scenario-candidates/generate")
+                        .with(user("queue-admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"target\":\"BOTH\",\"model\":\"gpt-5.6-terra[high]\"}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -101,7 +151,7 @@ class ScenarioModerationTest {
                 .andExpect(status().isForbidden());
         mvc.perform(post("/api/admin/scenario-candidates/generate")
                         .with(user("queue-user").roles("USER")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"count\":1}"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"target\":\"TRAINER\"}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -113,16 +163,22 @@ class ScenarioModerationTest {
         UUID id = UUID.fromString(candidate.path("id").asText());
         int before = jdbc.queryForObject("SELECT COUNT(*) FROM scenario WHERE published=TRUE", Integer.class);
 
-        mvc.perform(post("/api/admin/scenario-candidates/{id}/approve", id)
+        String approvalResponse = mvc.perform(post("/api/admin/scenario-candidates/{id}/approve", id)
                         .with(user("queue-admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"expectedVersion\":1}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("PUBLISHED"))
-                .andExpect(jsonPath("$.publishedScenarioId").isNotEmpty());
+                .andExpect(jsonPath("$.publishedScenarioId").isNotEmpty())
+                .andReturn().getResponse().getContentAsString();
+        UUID scenarioId = UUID.fromString(
+                json.readTree(approvalResponse).path("publishedScenarioId").asText());
 
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM scenario WHERE published=TRUE", Integer.class))
                 .isEqualTo(before + 1);
+        assertThat(jdbc.queryForObject(
+                "SELECT content_target FROM scenario WHERE id=?", String.class, scenarioId))
+                .isEqualTo("TRAINER");
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM moderation_action
                 WHERE candidate_id=? AND actor_id=? AND action_type='APPROVE_PUBLISH'
@@ -186,39 +242,75 @@ class ScenarioModerationTest {
     }
 
     @Test
-    void generationContinuesCanonicalCategoryCycleAcrossSavedCandidates() throws Exception {
+    void generationMaintainsIndependentCanonicalCyclesPerTarget() throws Exception {
         when(generator.generate(anyList(), anyString())).thenAnswer(invocation -> {
             List<String> categories = invocation.getArgument(0);
             return categories.stream().map(this::goodDraftForCategory).toList();
         });
+        when(generator.generatePractice(anyString(), anyString())).thenReturn(new PracticeScenarioDraft(
+                "ПРОДУКТ",
+                "Команда готовит новый рабочий процесс, но привычные решения скрывают главное ограничение и откладывают проверку результата.",
+                "Ищите новое направление работы, не называя основную мыслительную операцию."));
 
-        mvc.perform(post("/api/admin/scenario-candidates/generate")
-                        .with(user("queue-admin").roles("ADMIN")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"count\":8,\"model\":\"gpt-5.6-terra[high]\"}"))
-                .andExpect(status().isAccepted());
-        jdbc.update("UPDATE scenario_candidate SET status='REJECTED' WHERE category_code='INVERSION'");
-
-        mvc.perform(post("/api/admin/scenario-candidates/generate")
-                        .with(user("queue-admin").roles("ADMIN")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"count\":1,\"model\":\"gpt-5.6-terra[high]\"}"))
-                .andExpect(status().isAccepted());
+        generate("TRAINER");
+        generate("PRACTICE");
+        jdbc.update("UPDATE scenario_candidate SET status='REJECTED' WHERE content_target='PRACTICE'");
+        generate("PRACTICE");
+        generate("TRAINER");
 
         @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<String>> categories = ArgumentCaptor.forClass(List.class);
-        verify(generator, times(2)).generate(categories.capture(), anyString());
-        assertThat(categories.getAllValues().get(0)).containsExactly(
-                "INVERSION", "HYPERBOLE", "CROSS_DISCIPLINE", "BACKCASTING",
-                "PROVOCATION", "REFRAMING", "SIMPLIFICATION", "INVERSION");
-        assertThat(categories.getAllValues().get(1)).containsExactly("HYPERBOLE");
+        ArgumentCaptor<List<String>> trainerCategories = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<String> practiceCategories = ArgumentCaptor.forClass(String.class);
+        verify(generator, times(2)).generate(trainerCategories.capture(), anyString());
+        verify(generator, times(2)).generatePractice(practiceCategories.capture(), anyString());
+        assertThat(trainerCategories.getAllValues()).containsExactly(
+                List.of("INVERSION"), List.of("HYPERBOLE"));
+        assertThat(practiceCategories.getAllValues()).containsExactly("INVERSION", "HYPERBOLE");
+    }
+
+    @Test
+    void practiceApprovalPublishesSituationHintWithoutTrainerOptions() throws Exception {
+        when(generator.generatePractice(anyString(), anyString())).thenReturn(new PracticeScenarioDraft(
+                "ПРОДУКТ",
+                "Команда готовит новый рабочий процесс, но привычные решения скрывают ограничение и откладывают проверку результата.",
+                "Исследуйте противоположное направление цели, не называя саму технику."));
+        JsonNode candidate = generate("PRACTICE");
+        UUID id = UUID.fromString(candidate.path("id").asText());
+
+        String response = mvc.perform(post("/api/admin/scenario-candidates/{id}/approve", id)
+                        .with(user("queue-admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PUBLISHED"))
+                .andReturn().getResponse().getContentAsString();
+        UUID scenarioId = UUID.fromString(json.readTree(response).path("publishedScenarioId").asText());
+
+        assertThat(jdbc.queryForObject(
+                "SELECT content_target FROM scenario WHERE id=?", String.class, scenarioId))
+                .isEqualTo("PRACTICE");
+        assertThat(jdbc.queryForObject(
+                "SELECT hint_text FROM scenario WHERE id=?", String.class, scenarioId))
+                .contains("противоположное направление");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM scenario_option WHERE scenario_id=?", Integer.class, scenarioId))
+                .isZero();
     }
 
     private JsonNode generateOne() throws Exception {
         String response = mvc.perform(post("/api/admin/scenario-candidates/generate")
                         .with(user("queue-admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"count\":1,\"model\":\"gpt-5.6-terra[high]\"}"))
+                        .content("{\"target\":\"TRAINER\",\"model\":\"gpt-5.6-terra[high]\"}"))
+                .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString();
+        return json.readTree(response).get(0);
+    }
+
+    private JsonNode generate(String target) throws Exception {
+        String response = mvc.perform(post("/api/admin/scenario-candidates/generate")
+                        .with(user("queue-admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"target\":\"" + target + "\",\"model\":\"gpt-5.6-terra[high]\"}"))
                 .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString();
         return json.readTree(response).get(0);
     }

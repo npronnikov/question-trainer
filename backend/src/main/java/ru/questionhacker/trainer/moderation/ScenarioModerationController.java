@@ -4,7 +4,6 @@ import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -38,7 +37,7 @@ public class ScenarioModerationController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public List<ScenarioModerationService.CandidateView> generate(
             @Valid @RequestBody GenerateRequest request) {
-        return moderation.generate(auth.requireCurrentUser().id(), request.count(), request.model());
+        return moderation.generate(auth.requireCurrentUser().id(), request.target(), request.model());
     }
 
     @GetMapping
@@ -76,7 +75,7 @@ public class ScenarioModerationController {
     }
 
     public record GenerateRequest(
-            @Min(1) @Max(20) int count,
+            @NotBlank @Size(max = 16) String target,
             @Size(max = 120) String model) {
     }
 

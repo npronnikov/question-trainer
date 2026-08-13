@@ -29,22 +29,23 @@ public class ModerationRepository {
         return jdbc.queryForList("SELECT code FROM category ORDER BY sort_order", String.class);
     }
 
-    public long candidateCount() {
-        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM scenario_candidate", Long.class);
+    public long candidateCount(String target) {
+        Long count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM scenario_candidate WHERE content_target=?", Long.class, target);
         return count == null ? 0L : count;
     }
 
     public void insert(CandidateRow row) {
         jdbc.update("""
                 INSERT INTO scenario_candidate(
-                  id, status, version_number, category_code, secondary_category_code,
+                  id, status, content_target, version_number, category_code, secondary_category_code,
                   difficulty, domain_text, situation_text, question_text, hint_text,
                   options_json, correct_category_code, explanation_text, confused_with,
                   contrast_explanation, content_hash, source_model,
                   rejection_reasons_json, warnings_json, published_scenario_id,
                   created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, row.id(), row.status(), row.version(), row.category(), row.secondaryCategory(),
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, row.id(), row.status(), row.target(), row.version(), row.category(), row.secondaryCategory(),
                 row.difficulty(), row.domain(), row.situation(), row.question(), row.hint(),
                 row.optionsJson(), row.correctCategory(), row.explanation(), row.confusedWith(),
                 row.contrast(), row.contentHash(), row.sourceModel(), row.rejectionReasonsJson(),
@@ -112,13 +113,13 @@ public class ModerationRepository {
         UUID scenarioId = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO scenario(
-                  id, external_key, category_code, difficulty, domain_text,
-                  situation_text, question_text, explanation_text, confused_with,
+                  id, external_key, content_target, category_code, difficulty, domain_text,
+                  situation_text, question_text, hint_text, explanation_text, confused_with,
                   contrast_explanation, content_hash, published, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
-                """, scenarioId, "moderated-" + candidate.id(), candidate.category(),
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
+                """, scenarioId, "moderated-" + candidate.id(), candidate.target(), candidate.category(),
                 candidate.difficulty(), candidate.domain(), candidate.situation(), candidate.question(),
-                candidate.explanation(), candidate.confusedWith(), candidate.contrast(),
+                candidate.hint(), candidate.explanation(), candidate.confusedWith(), candidate.contrast(),
                 candidate.contentHash(), now, now);
         for (int index = 0; index < options.size(); index++) {
             jdbc.update("""
@@ -150,7 +151,7 @@ public class ModerationRepository {
     private CandidateRow candidate(java.sql.ResultSet rs, int ignored) throws java.sql.SQLException {
         return new CandidateRow(
                 rs.getObject("id", UUID.class), rs.getString("status"),
-                rs.getInt("version_number"), rs.getString("category_code"),
+                rs.getString("content_target"), rs.getInt("version_number"), rs.getString("category_code"),
                 rs.getString("secondary_category_code"), rs.getString("difficulty"),
                 rs.getString("domain_text"), rs.getString("situation_text"),
                 rs.getString("question_text"), rs.getString("hint_text"),
@@ -164,7 +165,7 @@ public class ModerationRepository {
     }
 
     public record CandidateRow(
-            UUID id, String status, int version, String category, String secondaryCategory,
+            UUID id, String status, String target, int version, String category, String secondaryCategory,
             String difficulty, String domain, String situation, String question, String hint,
             String optionsJson, String correctCategory, String explanation, String confusedWith,
             String contrast, String contentHash, String sourceModel,

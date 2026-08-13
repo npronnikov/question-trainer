@@ -5,7 +5,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
@@ -13,7 +12,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.IntStream;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -47,37 +45,28 @@ public class ScenarioModerationService {
     }
 
     @Transactional
-    public List<CandidateView> generate(UUID actorId, int count, String model) {
-        if (count < 1 || count > 20) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Количество должно быть от 1 до 20");
+    public List<CandidateView> generate(UUID actorId, String rawTarget, String model) {
+        ScenarioTarget target = ScenarioTarget.parse(rawTarget);
+        if (target == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестное назначение кейса");
         }
         moderation.lockGenerationSequence();
         List<String> categoryOrder = moderation.categoryCodes();
         if (categoryOrder.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Категории программы не загружены");
         }
-        long start = moderation.candidateCount();
-        List<String> requestedCategories = IntStream.range(0, count)
-                .mapToObj(index -> categoryOrder.get(
-                        (int) ((start + index) % categoryOrder.size())))
-                .toList();
-        List<ScenarioDraft> drafts = generator.generate(requestedCategories, model);
-        if (drafts == null || drafts.size() != count) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Генератор вернул неверное количество кейсов");
-        }
-        List<CandidateView> result = new ArrayList<>();
-        List<String> existing = new ArrayList<>(moderation.existingTexts());
-        for (ScenarioDraft draft : drafts) {
-            Screened screened = screen(draft, existing);
-            var row = row(UUID.randomUUID(), 1, screened, model);
-            moderation.insert(row);
-            moderation.action(action(actorId, row.id(),
-                    screened.reasons().isEmpty() ? "GENERATE" : "AUTO_REJECT",
-                    null, null, "GENERATING", row.status(), 0, 1, "{}", snapshot(row)));
-            if (draft != null && draft.situation() != null) existing.add(draft.situation());
-            result.add(view(row));
-        }
-        return result;
+        long position = moderation.candidateCount(target.name());
+        String category = categoryOrder.get((int) (position % categoryOrder.size()));
+        ScenarioDraft draft = target == ScenarioTarget.PRACTICE
+                ? practiceDraft(category, generator.generatePractice(category, model))
+                : trainerDraft(category, generator.generate(List.of(category), model));
+        Screened screened = screen(target, draft, moderation.existingTexts());
+        var row = row(UUID.randomUUID(), target, 1, screened, model);
+        moderation.insert(row);
+        moderation.action(action(actorId, row.id(),
+                screened.reasons().isEmpty() ? "GENERATE" : "AUTO_REJECT",
+                null, null, "GENERATING", row.status(), 0, 1, "{}", snapshot(row)));
+        return List.of(view(row));
     }
 
     @Transactional(readOnly = true)
@@ -130,8 +119,11 @@ public class ScenarioModerationService {
     @Transactional
     public CandidateView edit(UUID actorId, UUID id, int expectedVersion, ScenarioDraft draft) {
         var before = requirePending(id, expectedVersion);
-        Screened screened = screen(draft, moderation.existingTextsExcluding(id));
-        var replacement = row(id, before.version() + 1, screened, before.sourceModel());
+        ScenarioTarget target = ScenarioTarget.valueOf(before.target());
+        ScenarioDraft editableDraft = target == ScenarioTarget.PRACTICE
+                ? practiceEdit(before, draft) : draft;
+        Screened screened = screen(target, editableDraft, moderation.existingTextsExcluding(id));
+        var replacement = row(id, target, before.version() + 1, screened, before.sourceModel());
         if (!moderation.updateDraft(id, expectedVersion, replacement)) throw conflict();
         var after = requireCandidate(id);
         moderation.action(action(actorId, id, "EDIT", null, null,
@@ -140,13 +132,63 @@ public class ScenarioModerationService {
         return view(after);
     }
 
-    private Screened screen(ScenarioDraft draft, List<String> existing) {
+    private ScenarioDraft practiceDraft(String category, PracticeScenarioDraft generated) {
+        if (generated == null) return null;
+        return new ScenarioDraft(category, null, null, generated.domain(), generated.situation(),
+                null, generated.hint(), List.of(), null, null, null, null);
+    }
+
+    private ScenarioDraft trainerDraft(String category, List<ScenarioDraft> drafts) {
+        if (drafts == null || drafts.size() != 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Генератор вернул неверное количество кейсов");
+        }
+        ScenarioDraft draft = drafts.getFirst();
+        if (draft == null || !category.equals(normalizeCode(draft.category()))
+                || !category.equals(normalizeCode(draft.correctCategory()))) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Генератор нарушил заданный порядок категорий");
+        }
+        return draft;
+    }
+
+    private ScenarioDraft practiceEdit(ModerationRepository.CandidateRow before, ScenarioDraft draft) {
+        if (draft == null) return null;
+        return new ScenarioDraft(before.category(), null, null, draft.domain(), draft.situation(),
+                null, draft.hint(), List.of(), null, null, null, null);
+    }
+
+    private Screened screen(ScenarioTarget target, ScenarioDraft draft, List<String> existing) {
         LinkedHashSet<String> reasons = new LinkedHashSet<>();
         if (draft == null) {
             reasons.add("INVALID_SCHEMA");
             return new Screened(null, List.copyOf(reasons), List.of(), hash("invalid"));
         }
         String category = normalizeCode(draft.category());
+        if (target == ScenarioTarget.PRACTICE) {
+            return screenPractice(draft, existing, reasons, category);
+        }
+        return screenTrainer(draft, existing, reasons, category);
+    }
+
+    private Screened screenPractice(ScenarioDraft draft, List<String> existing,
+                                    LinkedHashSet<String> reasons, String category) {
+        if (!CATEGORIES.contains(category)) reasons.add("UNKNOWN_OR_MISMATCHED_CATEGORY");
+        if (blankOrOutside(draft.domain(), 2, 120)
+                || blankOrOutside(draft.situation(), 80, 1200)
+                || blankOrOutside(draft.hint(), 15, 600)) {
+            reasons.add("INVALID_LENGTH");
+        }
+        if (hintLeaks(draft.hint(), category)) reasons.add("HINT_LEAKS_ANSWER");
+        if (unsafe(draft.situation()) || unsafe(draft.hint())) reasons.add("UNSAFE_CONTENT");
+        if (nearDuplicate(draft.situation(), existing)) reasons.add("DUPLICATE");
+        String contentHash = hash(normalizeText(String.join("|",
+                "PRACTICE", safe(draft.situation()), safe(category))));
+        return new Screened(draft, List.copyOf(reasons), List.of(), contentHash);
+    }
+
+    private Screened screenTrainer(ScenarioDraft draft, List<String> existing,
+                                   LinkedHashSet<String> reasons, String category) {
         String secondary = normalizeCode(draft.secondaryCategory());
         String correct = normalizeCode(draft.correctCategory());
         String confused = normalizeCode(draft.confusedWith());
@@ -184,7 +226,8 @@ public class ScenarioModerationService {
         return new Screened(draft, List.copyOf(reasons), List.of(), contentHash);
     }
 
-    private ModerationRepository.CandidateRow row(UUID id, int version, Screened screened, String model) {
+    private ModerationRepository.CandidateRow row(UUID id, ScenarioTarget target, int version,
+                                                  Screened screened, String model) {
         ScenarioDraft draft = screened.draft();
         OffsetDateTime now = now();
         String category = known(draft == null ? null : draft.category());
@@ -192,7 +235,8 @@ public class ScenarioModerationService {
         String correct = known(draft == null ? null : draft.correctCategory());
         String confused = known(draft == null ? null : draft.confusedWith());
         return new ModerationRepository.CandidateRow(
-                id, screened.reasons().isEmpty() ? "PENDING_REVIEW" : "AUTO_REJECTED", version,
+                id, screened.reasons().isEmpty() ? "PENDING_REVIEW" : "AUTO_REJECTED",
+                target.name(), version,
                 category, secondary, normalizeCode(draft == null ? null : draft.difficulty()),
                 strip(draft == null ? null : draft.domain()), strip(draft == null ? null : draft.situation()),
                 strip(draft == null ? null : draft.question()), strip(draft == null ? null : draft.hint()),
@@ -204,7 +248,7 @@ public class ScenarioModerationService {
 
     private CandidateView view(ModerationRepository.CandidateRow row) {
         return new CandidateView(
-                row.id(), row.status(), row.version(), row.category(), row.secondaryCategory(),
+                row.id(), row.status(), row.target(), row.version(), row.category(), row.secondaryCategory(),
                 row.difficulty(), row.domain(), row.situation(), row.question(), row.hint(),
                 readOptions(row.optionsJson()), row.correctCategory(), row.explanation(),
                 row.confusedWith(), row.contrast(), readStrings(row.rejectionReasonsJson()),
@@ -365,7 +409,7 @@ public class ScenarioModerationService {
     }
 
     public record CandidateView(
-            UUID id, String status, int version, String category, String secondaryCategory,
+            UUID id, String status, String target, int version, String category, String secondaryCategory,
             String difficulty, String domain, String situation, String question, String hint,
             List<String> options, String correctCategory, String explanation,
             String confusedWith, String contrast, List<String> rejectionReasons,
