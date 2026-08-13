@@ -146,4 +146,35 @@ class AcpScenarioGenerationGatewayTest {
         verify(acp, times(2)).ask(anyString(), eq("test-model"), any());
     }
 
+    @Test
+    void practicePromptReceivesServerCategoryAndReturnsOnlyPracticeFields() {
+        when(acp.ask(anyString(), eq("test-model"), any())).thenReturn("""
+                {"domain":"ПРОДУКТ","situation":"Команда готовит запуск и должна самостоятельно найти новый ход в достаточно подробной безопасной рабочей ситуации.","hint":"Исследуйте противоположное направление цели, не называя технику."}
+                """);
+        var gateway = new AcpScenarioGenerationGateway(acp, properties, json);
+
+        PracticeScenarioDraft result = gateway.generatePractice("INVERSION", "test-model");
+
+        assertThat(result.domain()).isEqualTo("ПРОДУКТ");
+        assertThat(result.situation()).contains("Команда готовит запуск");
+        assertThat(result.hint()).isNotBlank();
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(acp).ask(prompt.capture(), eq("test-model"), any());
+        assertThat(prompt.getValue()).contains("INVERSION").doesNotContain("{{category}}");
+    }
+
+    @Test
+    void practiceResponseRejectsFieldsOutsideStrictSchema() {
+        when(acp.ask(anyString(), eq("test-model"), any())).thenReturn("""
+                {"domain":"ПРОДУКТ","situation":"Команда готовит запуск и должна самостоятельно найти новый ход в достаточно подробной безопасной рабочей ситуации.","hint":"Исследуйте противоположное направление цели, не называя технику.","category":"INVERSION"}
+                """);
+        var gateway = new AcpScenarioGenerationGateway(acp, properties, json);
+
+        assertThatThrownBy(() -> gateway.generatePractice("INVERSION", "test-model"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.BAD_GATEWAY));
+        verify(acp, times(2)).ask(anyString(), eq("test-model"), any());
+    }
+
 }

@@ -4,9 +4,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.List;
+import java.util.Set;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
@@ -28,29 +30,34 @@ public class AcpScenarioGenerationGateway implements ScenarioGenerationGateway {
             В каждом объекте разрешены только перечисленные в схеме поля с парами ключ:значение.
             Не добавляй пустые члены вида ,"" и проверь, что результат разбирается стандартным JSON-парсером.
             """;
+    private static final String PRACTICE_JSON_RETRY_INSTRUCTION = """
+
+            Предыдущая попытка содержала некорректный JSON. Сгенерируй объект заново.
+            Разрешены только поля domain, situation и hint с парами ключ:значение.
+            Не добавляй category, готовый вопрос, ответ, рассуждение, решение или пустые члены вида ,"".
+            Проверь, что результат разбирается стандартным JSON-парсером.
+            """;
 
     private final AcpGateway acp;
     private final AppProperties properties;
     private final ObjectMapper json;
-    private final String prompt;
+    private final String trainerPrompt;
+    private final String practicePrompt;
 
     public AcpScenarioGenerationGateway(AcpGateway acp, AppProperties properties, ObjectMapper json) {
         this.acp = acp;
         this.properties = properties;
         this.json = json;
-        this.prompt = readPrompt();
+        this.trainerPrompt = readPrompt("prompts/scenario-candidates-cycled-v1.md");
+        this.practicePrompt = readPrompt("prompts/practice-scenario-candidate-v1.md");
     }
 
     @Override
     public List<ScenarioDraft> generate(List<String> categories, String requestedModel) {
-        String model = requestedModel == null || requestedModel.isBlank()
-                ? properties.acp().defaultModel() : requestedModel.strip();
-        if (model != null && !model.isBlank() && !properties.acp().models().contains(model)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестная модель: " + model);
-        }
+        String model = validatedModel(requestedModel);
         String rendered;
         try {
-            rendered = prompt
+            rendered = trainerPrompt
                     .replace("{{count}}", Integer.toString(categories.size()))
                     .replace("{{categories}}", json.writeValueAsString(categories));
         } catch (IOException error) {
@@ -72,6 +79,13 @@ public class AcpScenarioGenerationGateway implements ScenarioGenerationGateway {
         return drafts;
     }
 
+    @Override
+    public PracticeScenarioDraft generatePractice(String category, String requestedModel) {
+        String model = validatedModel(requestedModel);
+        String rendered = practicePrompt.replace("{{category}}", category);
+        return requestPracticeDraft(rendered, model);
+    }
+
     private List<ScenarioDraft> requestDrafts(String rendered, String model) {
         String raw = acp.ask(rendered, model, ignored -> { });
         try {
@@ -91,6 +105,26 @@ public class AcpScenarioGenerationGateway implements ScenarioGenerationGateway {
         }
     }
 
+    private PracticeScenarioDraft requestPracticeDraft(String rendered, String model) {
+        String raw = acp.ask(rendered, model, ignored -> { });
+        try {
+            return parsePracticeWithLocalRepair(raw);
+        } catch (IOException firstError) {
+            log.warn("ACP practice generator returned invalid JSON ({} chars, {}). Retrying once.",
+                    raw.length(), errorLocation(firstError));
+        }
+
+        String retried = acp.ask(rendered + PRACTICE_JSON_RETRY_INSTRUCTION, model, ignored -> { });
+        try {
+            return parsePracticeWithLocalRepair(retried);
+        } catch (IOException secondError) {
+            log.warn("ACP practice generator returned invalid JSON after retry ({} chars, {}).",
+                    retried.length(), errorLocation(secondError));
+            throw upstreamFailure("ACP вернул некорректный JSON практической ситуации после повторной попытки",
+                    secondError);
+        }
+    }
+
     private List<ScenarioDraft> parseWithLocalRepair(String raw) throws IOException {
         try {
             return parse(raw);
@@ -104,12 +138,42 @@ public class AcpScenarioGenerationGateway implements ScenarioGenerationGateway {
         }
     }
 
+    private PracticeScenarioDraft parsePracticeWithLocalRepair(String raw) throws IOException {
+        try {
+            return parsePractice(raw);
+        } catch (IOException originalError) {
+            String repaired = removeStrayEmptyObjectMembers(raw);
+            if (repaired.equals(raw)) {
+                throw originalError;
+            }
+            log.debug("Removed stray empty object members from ACP practice JSON before parsing.");
+            return parsePractice(repaired);
+        }
+    }
+
     private List<ScenarioDraft> parse(String raw) throws IOException {
         String stripped = raw.strip();
         if (!stripped.startsWith("[") || !stripped.endsWith("]")) {
             throw new IOException("Generator must return one JSON array");
         }
         return json.readValue(stripped, new TypeReference<>() { });
+    }
+
+    private PracticeScenarioDraft parsePractice(String raw) throws IOException {
+        String stripped = raw.strip();
+        if (!stripped.startsWith("{") || !stripped.endsWith("}")) {
+            throw new IOException("Practice generator must return one JSON object");
+        }
+        JsonNode node = json.readTree(stripped);
+        if (!node.isObject()) {
+            throw new IOException("Practice generator must return one JSON object");
+        }
+        Set<String> fields = new java.util.HashSet<>();
+        node.fieldNames().forEachRemaining(fields::add);
+        if (!fields.equals(Set.of("domain", "situation", "hint"))) {
+            throw new IOException("Practice generator returned fields outside the schema");
+        }
+        return json.treeToValue(node, PracticeScenarioDraft.class);
     }
 
     private String removeStrayEmptyObjectMembers(String raw) {
@@ -173,12 +237,20 @@ public class AcpScenarioGenerationGateway implements ScenarioGenerationGateway {
         return new ResponseStatusException(HttpStatus.BAD_GATEWAY, reason, cause);
     }
 
-    private String readPrompt() {
-        try (var input = new ClassPathResource(
-                "prompts/scenario-candidates-cycled-v1.md").getInputStream()) {
+    private String validatedModel(String requestedModel) {
+        String model = requestedModel == null || requestedModel.isBlank()
+                ? properties.acp().defaultModel() : requestedModel.strip();
+        if (model != null && !model.isBlank() && !properties.acp().models().contains(model)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестная модель: " + model);
+        }
+        return model;
+    }
+
+    private String readPrompt(String path) {
+        try (var input = new ClassPathResource(path).getInputStream()) {
             return new String(input.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException error) {
-            throw new IllegalStateException("Cannot load scenario candidate prompt", error);
+            throw new IllegalStateException("Cannot load scenario candidate prompt: " + path, error);
         }
     }
 }
