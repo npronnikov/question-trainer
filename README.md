@@ -37,7 +37,10 @@ Codex CLI (`codex login`).
 Откройте `http://localhost:8090`. Скрипт запускает Spring Boot на порту 8081,
 локальный frontend-сервер на 8090 и `@agentclientprotocol/codex-acp` через
 `npx`. Переменная `CODEX_PATH` указывает адаптеру на установленный в системе
-`codex`, поэтому используется его локальная авторизация из `~/.codex`.
+`codex`, поэтому используется его локальная авторизация из `~/.codex`. Локальный
+скрипт загружает корневой `.env`, проверяет `CODEX_PATH` через `--version` и
+останавливается до запуска сервисов, если бинарник сломан. Явно переданные
+переменные окружения имеют приоритет над `.env`.
 
 По умолчанию агент работает в режиме `read-only`. Команду ACP, frontend-порт
 и модель можно переопределить:
@@ -119,7 +122,7 @@ H2 создаёт файл `backend/data/question-hacker.mv.db`. Консоль 
 
 ```bash
 cd backend && mvn test
-node --test frontend/tests/*.test.mjs
+node --test frontend/tests/*.test.mjs scripts/tests/*.test.mjs
 node --check frontend/api.js
 node --check frontend/auth.js
 node --check frontend/app.js
