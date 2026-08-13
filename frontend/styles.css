@@ -313,12 +313,10 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visib
 .chat-sidebar { min-height: calc(100vh - 78px); padding: 28px 18px; display: flex; flex-direction: column; background: var(--ink); color: var(--paper); border-right: 1px solid var(--white-line); }
 .sidebar-head { display: flex; justify-content: space-between; align-items: center; padding: 0 8px 24px; }
 .sidebar-head h2 { margin: 7px 0 0; font-size: 28px; }
-.sidebar-route-copy { margin: 0 8px 24px; color: #b8bab1; font-size: 13px; line-height: 1.55; }
-.practice-history-tools { min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 12px; margin-bottom: 18px; }
-.practice-history-actions { display: grid; grid-template-columns: auto 1fr; gap: 7px; }
+.practice-history-tools { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; margin-bottom: 18px; }
+.practice-history-actions { display: grid; grid-template-columns: 1fr; gap: 7px; }
 .practice-history-actions .secondary-button { color: var(--paper); border-color: var(--white-line); font-size: 11px; }
 .practice-history-actions .secondary-button:hover { color: var(--ink); }
-.practice-history-status { min-height: 16px; margin: 0 5px; color: #92948b; font: 9px var(--mono); text-transform: uppercase; letter-spacing: .07em; }
 .practice-cycle-list { min-height: 0; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
 .practice-cycle-row { width: 100%; display: grid; gap: 7px; padding: 13px; border: 1px solid var(--white-line); border-radius: 13px; background: transparent; color: #c4c6bd; text-align: left; cursor: pointer; }
 .practice-cycle-row:hover, .practice-cycle-row:focus-visible { background: rgba(255,255,255,.07); color: white; }
@@ -415,7 +413,6 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
 /* Guided practice */
 .practice-panel { overflow-y: auto; padding: 42px max(28px, calc((100% - 940px)/2)); }
 .practice-empty { min-height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-bottom: 46px; }
-.practice-number { color: transparent; -webkit-text-stroke: 1px #9a9b92; font: 72px/1 var(--mono); }
 .practice-empty h2 { margin: 20px 0 12px; font-size: clamp(38px, 5vw, 64px); line-height: .98; letter-spacing: -.055em; }
 .practice-progress-intro { width: min(650px, 100%); margin: 10px 0 20px; }
 .practice-empty p { max-width: 650px; margin: 0 0 28px; color: #66675f; font-size: 17px; line-height: 1.55; }

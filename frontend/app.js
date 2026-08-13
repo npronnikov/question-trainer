@@ -574,7 +574,6 @@
     const messageFeed = $('#message-feed');
     const composer = $('#composer');
     const sessionTools = $('#session-tools');
-    const practiceContext = $('#practice-route-context');
 
     practicePanel.classList.toggle('is-hidden', chat);
     practicePanel.inert = chat;
@@ -587,8 +586,6 @@
     composer.inert = !chat;
     sessionTools.classList.toggle('is-hidden', !chat);
     sessionTools.inert = !chat;
-    practiceContext.classList.toggle('is-hidden', chat);
-    practiceContext.inert = chat;
     $('#learning-section-label').textContent = chat ? '04 / КОУЧ' : '03 / ПРАКТИКА';
     $('#learning-sidebar-title').textContent = chat ? 'Диалоги' : 'Полный цикл';
     $('#chat-title').textContent = chat ? 'Тренер вопросов' : 'Практика полного цикла';
@@ -607,16 +604,12 @@
       practiceCycles = await api('/practice/cycles');
       renderPracticeCycles();
     } catch (error) {
-      $('#practice-history-status').textContent = 'История временно недоступна';
       showToast(error.message);
     }
   }
 
   function renderPracticeCycles() {
     const selectedId = practiceAssignment?.assignmentId;
-    $('#practice-history-status').textContent = practiceCycles.length
-      ? `${practiceCycles.length} ${practiceCycles.length === 1 ? 'цикл' : 'циклов'} · черновики сохраняются`
-      : 'Сохранённых циклов пока нет';
     $('#practice-cycle-list').innerHTML = practiceCycles.map(cycle => `
       <div role="listitem">
         <button class="practice-cycle-row" type="button" data-practice-cycle="${escapeHtml(cycle.assignmentId)}">
@@ -652,20 +645,6 @@
       $('#practice-example-category').textContent = 'ПРИМЕР ВРЕМЕННО НЕДОСТУПЕН';
       $('#practice-example-situation').textContent = error.message;
     }
-  }
-
-  async function showPracticeHome(refreshExample = true) {
-    if (practiceSubmitting) return;
-    await flushPracticeDraft();
-    clearAttemptPoll();
-    practiceLoadSequence += 1;
-    practiceAssignment = null;
-    practiceAttempt = null;
-    practiceEditorBaseAttemptId = null;
-    $('#practice-workspace').classList.add('is-hidden');
-    $('#practice-empty').classList.remove('is-hidden');
-    renderPracticeCycles();
-    if (refreshExample) await loadPracticeExample();
   }
 
   async function startPractice() {
@@ -952,7 +931,6 @@
   function bindPractice() {
     $('#start-practice').addEventListener('click', startPractice);
     $('#new-practice').addEventListener('click', startPractice);
-    $('#practice-home').addEventListener('click', () => showPracticeHome(true));
     $('#practice-form').addEventListener('submit', submitPractice);
     $('#practice-form').addEventListener('input', () => {
       updatePracticeProgress();

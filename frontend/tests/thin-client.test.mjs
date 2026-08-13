@@ -181,7 +181,8 @@ test('practice locks submitted values and guards duplicate mutations', async () 
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
 
   assert.match(app, /let practiceSubmitting = false/);
-  assert.match(app, /if \(practiceSubmitting\) return/);
+  assert.match(app, /if \(practiceSubmitting \|\| buttons\.some\(button => button\.disabled\)\) return/);
+  assert.match(app, /if \(!practiceAssignment \|\| practiceSubmitting\) return/);
   assert.match(app, /setRevisionFields\(\[\], true\)/);
   assert.match(app, /buttons\.some\(button => button\.disabled\)/);
 });
@@ -214,7 +215,7 @@ test('practice and coach are independent hash routes', async () => {
   assert.match(app, /syncLearningRoute\(route\)/);
   assert.doesNotMatch(app, /coachMode|setCoachMode/);
   assert.match(css, /#view-learning\s*\{/);
-  assert.match(css, /\.sidebar-route-copy\s*\{/);
+  assert.doesNotMatch(css, /\.sidebar-route-copy\s*\{/);
   assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.main-nav\s*\{[^}]*overflow-x:\s*auto;/);
   assert.doesNotMatch(css, /\.coach-mode-switch/);
 });
@@ -234,10 +235,22 @@ test('coach dialogs are renamed inline through the server', async () => {
   assert.match(css, /\.session-title-input/);
 });
 
+test('practice omits the overview action and redundant labels', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+  const startPractice = app.match(/async function startPractice\(\)[\s\S]*?async function selectPracticeCycle/)?.[0] || '';
+
+  assert.doesNotMatch(html, /id="practice-home"|practice-number|practice-history-status/);
+  assert.doesNotMatch(html, /Четыре шага превращают вопрос в проверяемое решение/);
+  assert.doesNotMatch(app, /showPracticeHome|#practice-home|#practice-history-status/);
+  assert.match(startPractice, /api\('\/practice\/assignments'/);
+  assert.doesNotMatch(startPractice, /generate|scenario-candidates/);
+});
+
 test('practice history invalidates the offline shell cache', async () => {
   const serviceWorker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
 
-  assert.match(serviceWorker, /const CACHE = 'question-hacker-v12';/);
+  assert.match(serviceWorker, /const CACHE = 'question-hacker-v13';/);
 });
 
 test('boot activates the hash route before background API hydration', async () => {
