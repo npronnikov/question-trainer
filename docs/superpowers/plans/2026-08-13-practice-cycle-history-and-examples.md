@@ -219,7 +219,7 @@ Annotate `submit` and `revise` with `@Transactional`. Call `practice.deleteDraft
 
 - [ ] **Step 4: Run practice backend tests and verify GREEN**
 
-Run: `cd backend && mvn -Dtest='ru.questionhacker.trainer.practice.*' test`
+Run: `cd backend && mvn -Dtest='Practice*Test' test`
 
 Expected: all practice package tests PASS.
 

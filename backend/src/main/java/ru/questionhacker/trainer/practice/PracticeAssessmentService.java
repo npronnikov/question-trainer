@@ -18,6 +18,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -61,6 +64,7 @@ public class PracticeAssessmentService {
         this.clock = clock;
     }
 
+    @Transactional
     public AttemptView submit(UUID ownerId, Submission input) {
         validateInput(input);
         var existing = practice.findAttemptByIdempotency(ownerId, input.idempotencyKey());
@@ -73,7 +77,8 @@ public class PracticeAssessmentService {
                 input.question().strip(), input.answer().strip(), input.reasoning().strip(),
                 input.solution().strip(), "[]", normalize(input.model()),
                 normalize(input.idempotencyKey()), OffsetDateTime.now(clock));
-        executor.submit(() -> evaluate(attempt.id()));
+        practice.deleteDraft(ownerId, assignment.id());
+        scheduleEvaluation(attempt.id());
         return view(attempt);
     }
 
@@ -84,6 +89,7 @@ public class PracticeAssessmentService {
                         HttpStatus.NOT_FOUND, "Попытка не найдена"));
     }
 
+    @Transactional
     public AttemptView revise(UUID ownerId, UUID parentAttemptId, Revision input) {
         var existing = practice.findAttemptByIdempotency(ownerId, normalize(input.idempotencyKey()));
         if (existing.isPresent()) return view(existing.get());
@@ -115,8 +121,23 @@ public class PracticeAssessmentService {
                 ownerId, assignment, parent.id(), question, answer, reasoning, solution,
                 write(changed), normalize(submission.model()), normalize(input.idempotencyKey()),
                 OffsetDateTime.now(clock));
-        executor.submit(() -> evaluate(attempt.id()));
+        practice.deleteDraft(ownerId, assignment.id());
+        scheduleEvaluation(attempt.id());
         return view(attempt);
+    }
+
+    private void scheduleEvaluation(UUID attemptId) {
+        Runnable task = () -> executor.submit(() -> evaluate(attemptId));
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    task.run();
+                }
+            });
+        } else {
+            task.run();
+        }
     }
 
     public SseEmitter events(UUID ownerId, UUID attemptId) {

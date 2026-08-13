@@ -9,6 +9,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -58,6 +59,7 @@ class PracticeAttemptLifecycleTest {
 
     @BeforeEach
     void resetUserData() {
+        jdbc.update("DELETE FROM practice_draft");
         jdbc.update("DELETE FROM practice_assessment");
         jdbc.update("DELETE FROM practice_attempt");
         jdbc.update("DELETE FROM practice_assignment");
@@ -72,8 +74,10 @@ class PracticeAttemptLifecycleTest {
         when(gateway.assess(any(), anyString())).thenReturn(
                 new PracticeAssessmentGateway.Result(validAssessment(2, 3, "MEDIUM", "PASSED"), "test-model"));
         UUID assignment = assignment("assessment-alice");
+        assertThat(draftCount(assignment)).isEqualTo(1);
 
         UUID attempt = submit("assessment-alice", assignment, "key-pass");
+        assertThat(draftCount(assignment)).isZero();
         JsonNode terminal = awaitTerminal("assessment-alice", attempt);
 
         assertThat(terminal.path("status").asText()).isEqualTo("PASSED");
@@ -153,7 +157,8 @@ class PracticeAttemptLifecycleTest {
                         validAssessment(1, 3, "HIGH", "PASSED"), "test-model"))
                 .thenReturn(new PracticeAssessmentGateway.Result(
                         validAssessment(2, 3, "HIGH", null), "test-model"));
-        UUID original = submit("assessment-alice", assignment("assessment-alice"), "revision-original");
+        UUID assignment = assignment("assessment-alice");
+        UUID original = submit("assessment-alice", assignment, "revision-original");
         awaitTerminal("assessment-alice", original);
 
         mvc.perform(post("/api/practice/attempts/{id}/revisions", original)
@@ -162,20 +167,43 @@ class PracticeAttemptLifecycleTest {
                         .content("{\"answer\":\"Нельзя незаметно менять сильный шаг, который сервер не отметил для исправления.\",\"idempotencyKey\":\"bad-revision\"}"))
                 .andExpect(status().isBadRequest());
 
+        String revisedQuestion = "Какие три наблюдаемых действия гарантированно приведут запуск к провалу за неделю?";
+        String draft = json.createObjectNode()
+                .put("baseAttemptId", original.toString())
+                .put("question", revisedQuestion)
+                .put("answer", "Провал создадут размытый владелец результата, поздняя проверка и скрытые риски.")
+                .put("reasoning", "Если обратить причины провала, получаем раннего владельца, быстрый тест и открытый реестр рисков.")
+                .put("solution", "Назначить владельца и провести недельный тест с реестром трёх главных рисков.")
+                .toString();
+        mvc.perform(put("/api/practice/cycles/{id}/draft", assignment)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(draft))
+                .andExpect(status().isOk());
+        assertThat(draftCount(assignment)).isEqualTo(1);
+
         String response = mvc.perform(post("/api/practice/attempts/{id}/revisions", original)
                         .with(user("assessment-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"question\":\"Какие три наблюдаемых действия гарантированно приведут запуск к провалу за неделю?\",\"idempotencyKey\":\"good-revision\"}"))
+                        .content(json.createObjectNode()
+                                .put("question", revisedQuestion)
+                                .put("idempotencyKey", "good-revision").toString()))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.parentAttemptId").value(original.toString()))
                 .andExpect(jsonPath("$.attemptNumber").value(2))
                 .andReturn().getResponse().getContentAsString();
+        assertThat(draftCount(assignment)).isZero();
         UUID revision = UUID.fromString(json.readTree(response).path("attemptId").asText());
         assertThat(awaitTerminal("assessment-alice", revision).path("status").asText())
                 .isEqualTo("PASSED");
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM practice_attempt WHERE assignment_id=(SELECT assignment_id FROM practice_attempt WHERE id=?)",
                 Integer.class, original)).isEqualTo(2);
+        mvc.perform(get("/api/practice/cycles").with(user("assessment-alice")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].assignmentId").value(assignment.toString()))
+                .andExpect(jsonPath("$[0].attemptCount").value(2))
+                .andExpect(jsonPath("$[0].status").value("PASSED"));
     }
 
     @Test
@@ -237,6 +265,12 @@ class PracticeAttemptLifecycleTest {
             Thread.sleep(10);
         } while (Instant.now().isBefore(deadline));
         throw new AssertionError("Assessment did not complete: " + result);
+    }
+
+    private int draftCount(UUID assignment) {
+        return jdbc.queryForObject(
+                "SELECT COUNT(*) FROM practice_draft WHERE assignment_id=?",
+                Integer.class, assignment);
     }
 
     private String validAssessment(int fit, int strength, String confidence, String verdict) {
