@@ -298,10 +298,10 @@ test('practice omits the overview action and redundant labels', async () => {
   assert.doesNotMatch(startPractice, /generate|scenario-candidates/);
 });
 
-test('practice history invalidates the offline shell cache', async () => {
+test('targeted moderation invalidates the offline shell cache', async () => {
   const serviceWorker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
 
-  assert.match(serviceWorker, /const CACHE = 'question-hacker-v14';/);
+  assert.match(serviceWorker, /const CACHE = 'question-hacker-v15';/);
 });
 
 test('boot activates the hash route before background API hydration', async () => {
