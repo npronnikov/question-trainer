@@ -4,7 +4,7 @@
 
 1. **Теория** — семь серверных категорий, формулы, примеры, контрасты и доказательные источники.
 2. **Адаптивный тренажёр** — 98 проверенных карточек трёх уровней; backend выдаёт варианты, проверяет ответ и обновляет освоение.
-3. **Практика полного цикла** — вопрос, ответ, рассуждение и решение с серверной оценкой полноты, попадания в категорию и силы вопроса.
+3. **Практика полного цикла** — персональная последовательность модерированных ситуаций: вопрос, ответ, рассуждение и решение с серверной оценкой полноты, попадания в категорию и силы вопроса.
 4. **Обучение в чате** — персональная история и потоковая выдача через SSE; при отключённом агенте работает методический fallback.
 5. **Контур модерации** — сгенерированные ситуации проходят автоматическую отбраковку и ручное решение администратора до публикации.
 
@@ -85,10 +85,12 @@ H2 создаёт файл `backend/data/question-hacker.mv.db`. Консоль 
 ## Отдельные промпты
 
 - `backend/src/main/resources/prompts/training-coach.md`
-- `backend/src/main/resources/prompts/scenario-candidates-v1.md`
+- `backend/src/main/resources/prompts/scenario-candidates-cycled-v1.md`
 - `backend/src/main/resources/prompts/practice-assessment-v1.md`
 
 Промпты загружаются как ресурсы и не зашиты в Java-код.
+
+Генерация ситуаций доступна только администратору в разделе модерации. Backend передаёт ACP точную последовательность категорий `1…7`, затем снова `1`, сохраняет каждый ответ как кандидат и не допускает его в «Практику» до ручной публикации.
 
 ## API
 
@@ -107,17 +109,19 @@ H2 создаёт файл `backend/data/question-hacker.mv.db`. Консоль 
 - `GET /api/curriculum/categories` и `GET /api/curriculum/categories/{code}`
 - `GET /api/trainer/next` и `POST /api/trainer/attempts`
 - `GET /api/progress`
-- `POST /api/practice/assignments`
+- `POST /api/practice/assignments` — выдаёт следующую опубликованную ситуацию без вызова ACP; категория определяется сервером
 - `GET /api/practice/cycles` и `GET /api/practice/cycles/{assignmentId}` — персональная история и полный timeline цикла
 - `PUT /api/practice/cycles/{assignmentId}/draft` — серверное автосохранение черновика
 - `GET /api/practice/examples/random` — случайный опубликованный пример полного цикла
 - `POST /api/practice/attempts`, `GET /api/practice/attempts/{id}` и `POST /api/practice/attempts/{id}/revisions`
 - `GET /api/practice/attempts/{id}/events` — SSE статуса оценки
-- `/api/admin/scenario-candidates/**` — генерация, просмотр, правка, отказ и публикация (только ADMIN)
+- `/api/admin/scenario-candidates/**` — ACP-генерация, просмотр, правка, отказ и публикация (только ADMIN)
+
+У каждого пользователя свой цикл категорий `1…7 → 1…7`. Новая ситуация выдаётся только после `PASSED` по текущей, а уже пройденный этим пользователем сценарий не повторяется. Встроенные сценарии программы используются тренажёром, но не входят в каталог «Практики». Если для следующей категории нет нового опубликованного кандидата, API возвращает `PRACTICE_CATALOG_EXHAUSTED`, и интерфейс просит дождаться публикации администратора.
 
 ## Структура данных
 
-`chat_session` и `chat_message` хранят персональные диалоги. `category`, `theory_section`, `scenario` и `scenario_option` образуют серверную программу. `trainer_issuance`, `trainer_attempt`, `category_mastery` и `category_confusion` хранят персональную траекторию. `practice_*` хранит полный цикл практики и аудируемую оценку. `scenario_candidate` и `moderation_action` образуют очередь качества.
+`chat_session` и `chat_message` хранят персональные диалоги. `category`, `theory_section`, `scenario` и `scenario_option` образуют серверную программу. `trainer_issuance`, `trainer_attempt`, `category_mastery` и `category_confusion` хранят персональную траекторию. `practice_*` хранит полный цикл практики и аудируемую оценку. `scenario_candidate` и `moderation_action` образуют очередь качества; только связь `scenario_candidate.status=PUBLISHED → scenario` включает ситуацию в каталог практики.
 
 `app_user` и `user_role` хранят локальные аккаунты и роли. Пароли сохраняются только как BCrypt hash. Каждый `chat_session` принадлежит конкретному пользователю; чужой идентификатор возвращает `404`, не раскрывая существование ресурса.
 
