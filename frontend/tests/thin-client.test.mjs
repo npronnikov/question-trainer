@@ -64,6 +64,29 @@ test('moderation is a role-gated application view', async () => {
   assert.match(app, /roles\?\.includes\('ADMIN'\)/);
 });
 
+test('moderation generates one targeted candidate with the shared model picker', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.doesNotMatch(html, /id="moderation-count"/);
+  assert.match(html, /class="model-picker moderation-model-picker"/);
+  assert.match(html, /class="[^\"]*moderation-generation-button[^\"]*"[^>]*data-generation-target="PRACTICE"/);
+  assert.match(html, /class="[^\"]*moderation-generation-button[^\"]*"[^>]*data-generation-target="TRAINER"/);
+  assert.match(app, /JSON\.stringify\(\{ target, model: selectedModel \}\)/);
+  assert.match(app, /\$\$\('\.model-picker'\)/);
+  assert.match(app, /\$\$\('\.moderation-generation-button'\)/);
+});
+
+test('moderation list uses 50 characters and approval clears the editor', async () => {
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(app, /function firstCharacters\(value, limit = 50\)/);
+  assert.match(app, /Array\.from\(String\(value \|\| ''\)\)\.slice\(0, limit\)\.join\(''\)/);
+  assert.match(app, /item\.target === 'PRACTICE'/);
+  assert.match(app, /async function approveCandidate[\s\S]*selectedCandidate = null;[\s\S]*renderCandidateDetail\(\)/);
+  assert.match(app, /async function loadModeration[\s\S]*renderCandidateList\(\);[\s\S]*renderCandidateDetail\(\);/);
+});
+
 test('reduced motion and focusable feedback are explicit', async () => {
   const css = await fs.readFile(new URL('styles.css', frontend), 'utf8');
   const html = await fs.readFile(new URL('index.html', frontend), 'utf8');

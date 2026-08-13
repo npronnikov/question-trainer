@@ -12,6 +12,7 @@
     PENDING_REVIEW: 'На проверке', AUTO_REJECTED: 'Автоотказ',
     REJECTED: 'Отклонено', PUBLISHED: 'Опубликовано'
   };
+  const TARGET_LABELS = { PRACTICE: 'Практика', TRAINER: 'Тренажёр' };
   const REJECTION_LABELS = {
     WEAK_LEARNING_VALUE: 'Слабая учебная ценность', WRONG_CATEGORY: 'Неверная категория',
     DUPLICATE: 'Дубликат', UNSAFE_CONTENT: 'Небезопасный контент',
@@ -64,6 +65,10 @@
     return String(value).replace(/[&<>'"]/g, char => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
     })[char]);
+  }
+
+  function firstCharacters(value, limit = 50) {
+    return Array.from(String(value || '')).slice(0, limit).join('');
   }
 
   async function api(path, options = {}) {
@@ -420,14 +425,18 @@
     };
   }
 
-  function renderModelPicker() {
-    const trigger = $('#model-trigger');
-    const popover = $('#model-popover');
+  function renderModelPicker(root) {
+    const trigger = $('.model-trigger', root);
+    const popover = $('.model-popover', root);
+    const select = $('.model-select', root);
     const presentation = modelPresentation(selectedModel);
     trigger.disabled = !availableModels.length;
-    $('#model-mark').textContent = availableModels.length ? presentation.mark : '—';
-    $('#model-name').textContent = availableModels.length ? presentation.family : 'Модель недоступна';
-    $('#model-detail').textContent = availableModels.length ? presentation.detail : 'Нет доступных моделей';
+    $('.model-mark', root).textContent = availableModels.length ? presentation.mark : '—';
+    $('.model-name', root).textContent = availableModels.length ? presentation.family : 'Модель недоступна';
+    $('.model-detail', root).textContent = availableModels.length ? presentation.detail : 'Нет доступных моделей';
+    select.innerHTML = availableModels.map(model => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`).join('');
+    select.disabled = !availableModels.length;
+    select.value = selectedModel || '';
     popover.innerHTML = availableModels.map(model => {
       const option = modelPresentation(model);
       const selected = model === selectedModel;
@@ -438,47 +447,54 @@
     $$('.model-option', popover).forEach(option => {
       option.addEventListener('click', () => {
         setSelectedModel(option.dataset.model);
-        closeModelPicker({ restoreFocus: true });
+        closeModelPicker(root, { restoreFocus: true });
       });
       option.addEventListener('keydown', handleModelOptionKeydown);
     });
   }
 
+  function renderModelPickers() {
+    $$('.model-picker').forEach(renderModelPicker);
+  }
+
   function setSelectedModel(model) {
     selectedModel = model || null;
-    $('#model-select').value = selectedModel || '';
-    renderModelPicker();
+    renderModelPickers();
   }
 
-  function openModelPicker(focusIndex = null) {
+  function openModelPicker(root, focusIndex = null) {
     if (!availableModels.length) return;
-    const trigger = $('#model-trigger');
-    const popover = $('#model-popover');
+    const trigger = $('.model-trigger', root);
+    const popover = $('.model-popover', root);
     popover.hidden = false;
     trigger.setAttribute('aria-expanded', 'true');
-    $('#model-picker').classList.add('is-open');
+    root.classList.add('is-open');
     const selectedIndex = Math.max(0, availableModels.indexOf(selectedModel));
-    focusModelOption(focusIndex == null ? selectedIndex : focusIndex);
+    focusModelOption(root, focusIndex == null ? selectedIndex : focusIndex);
   }
 
-  function closeModelPicker({ restoreFocus = false } = {}) {
-    const trigger = $('#model-trigger');
-    const popover = $('#model-popover');
+  function closeModelPicker(root = null, { restoreFocus = false } = {}) {
+    if (!root) {
+      $$('.model-picker').forEach(picker => closeModelPicker(picker));
+      return;
+    }
+    const trigger = $('.model-trigger', root);
+    const popover = $('.model-popover', root);
     if (!trigger || !popover) return;
     popover.hidden = true;
     trigger.setAttribute('aria-expanded', 'false');
-    $('#model-picker')?.classList.remove('is-open');
+    root.classList.remove('is-open');
     if (restoreFocus) trigger.focus();
   }
 
-  function moveModelFocus(currentIndex, delta) {
-    const options = $$('.model-option', $('#model-popover'));
+  function moveModelFocus(root, currentIndex, delta) {
+    const options = $$('.model-option', root);
     if (!options.length) return;
-    focusModelOption((currentIndex + delta + options.length) % options.length);
+    focusModelOption(root, (currentIndex + delta + options.length) % options.length);
   }
 
-  function focusModelOption(index) {
-    const options = $$('.model-option', $('#model-popover'));
+  function focusModelOption(root, index) {
+    const options = $$('.model-option', root);
     if (!options.length) return;
     const target = Math.max(0, Math.min(options.length - 1, index));
     options.forEach((option, optionIndex) => { option.tabIndex = optionIndex === target ? 0 : -1; });
@@ -486,40 +502,48 @@
   }
 
   function handleModelOptionKeydown(event) {
-    const options = $$('.model-option', $('#model-popover'));
+    const root = event.currentTarget.closest('.model-picker');
+    const options = $$('.model-option', root);
     const index = options.indexOf(event.currentTarget);
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
-      moveModelFocus(index, event.key === 'ArrowDown' ? 1 : -1);
+      moveModelFocus(root, index, event.key === 'ArrowDown' ? 1 : -1);
     } else if (event.key === 'Home' || event.key === 'End') {
       event.preventDefault();
-      focusModelOption(event.key === 'Home' ? 0 : options.length - 1);
+      focusModelOption(root, event.key === 'Home' ? 0 : options.length - 1);
     } else if (event.key === 'Escape') {
       event.preventDefault();
-      closeModelPicker({ restoreFocus: true });
+      closeModelPicker(root, { restoreFocus: true });
     }
   }
 
-  function bindModelPicker() {
-    $('#model-trigger').addEventListener('click', () => {
-      if ($('#model-popover').hidden) openModelPicker(); else closeModelPicker();
-    });
-    $('#model-trigger').addEventListener('keydown', event => {
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        event.preventDefault();
-        const selectedIndex = Math.max(0, availableModels.indexOf(selectedModel));
-        openModelPicker(event.key === 'ArrowDown' ? selectedIndex : Math.max(0, availableModels.length - 1));
-      } else if (event.key === 'Escape') {
-        closeModelPicker();
-      }
+  function bindModelPickers() {
+    $$('.model-picker').forEach(root => {
+      const trigger = $('.model-trigger', root);
+      const popover = $('.model-popover', root);
+      trigger.addEventListener('click', () => {
+        if (popover.hidden) openModelPicker(root); else closeModelPicker(root);
+      });
+      trigger.addEventListener('keydown', event => {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          const selectedIndex = Math.max(0, availableModels.indexOf(selectedModel));
+          openModelPicker(root, event.key === 'ArrowDown' ? selectedIndex : Math.max(0, availableModels.length - 1));
+        } else if (event.key === 'Escape') {
+          closeModelPicker(root);
+        }
+      });
+      $('.model-select', root).addEventListener('change', event => setSelectedModel(event.target.value));
+      root.addEventListener('focusout', () => {
+        window.setTimeout(() => {
+          if (!root.contains(document.activeElement)) closeModelPicker(root);
+        }, 0);
+      });
     });
     document.addEventListener('click', event => {
-      if (!$('#model-picker').contains(event.target)) closeModelPicker();
-    });
-    $('#model-picker').addEventListener('focusout', () => {
-      window.setTimeout(() => {
-        if (!$('#model-picker').contains(document.activeElement)) closeModelPicker();
-      }, 0);
+      $$('.model-picker').forEach(root => {
+        if (!root.contains(event.target)) closeModelPicker(root);
+      });
     });
   }
 
@@ -537,8 +561,6 @@
       $('#agent-status').textContent = online ? 'Семантическая оценка доступна.' : 'Ответы коуча работают через fallback; оценка может стать непроверенной.';
       $('#agent-command').textContent = status.agentCommand || '—';
       availableModels = (status.models || []).slice(0, 3);
-      $('#model-select').innerHTML = availableModels.map(model => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`).join('');
-      $('#model-select').disabled = !availableModels.length;
       setSelectedModel(availableModels.includes(status.defaultModel) ? status.defaultModel : availableModels[0] || null);
     } catch (error) {
       systemStatus = null;
@@ -978,7 +1000,6 @@
       updatePracticeProgress();
       schedulePracticeDraft();
     });
-    $('#model-select').addEventListener('change', event => { selectedModel = event.target.value || null; });
   }
 
   async function initChat() {
@@ -1195,12 +1216,12 @@
     $('#moderation-status').textContent = 'Загружаем очередь…';
     try {
       moderationRows = await api(`/admin/scenario-candidates?status=${encodeURIComponent(moderationStatus)}`);
-      renderCandidateList();
-      $('#moderation-status').textContent = `${STATUS_LABELS[moderationStatus]}: ${moderationRows.length}`;
       if (selectedCandidate) {
         selectedCandidate = moderationRows.find(item => item.id === selectedCandidate.id) || null;
-        renderCandidateDetail();
       }
+      renderCandidateList();
+      renderCandidateDetail();
+      $('#moderation-status').textContent = `${STATUS_LABELS[moderationStatus]}: ${moderationRows.length}`;
     } catch (error) {
       $('#moderation-status').textContent = error.message;
     }
@@ -1209,8 +1230,8 @@
   function renderCandidateList() {
     $('#candidate-list').innerHTML = moderationRows.length ? moderationRows.map(item => `
       <button class="candidate-row ${selectedCandidate?.id === item.id ? 'is-active' : ''}" data-candidate="${item.id}">
-        <span>${escapeHtml(item.difficulty || '—')} · ${escapeHtml(item.category || 'без категории')}</span>
-        <strong>${escapeHtml(item.situation || 'Некорректный кандидат')}</strong>
+        <span>${escapeHtml(TARGET_LABELS[item.target] || item.target || '—')} · ${escapeHtml(item.difficulty || item.category || '—')}</span>
+        <strong>${escapeHtml(firstCharacters(item.situation || 'Некорректный кандидат'))}</strong>
         <small>${escapeHtml(item.domain || STATUS_LABELS[item.status] || item.status)}</small>
       </button>`).join('') : '<p class="empty-queue">В этом статусе кейсов нет.</p>';
     $$('.candidate-row').forEach(button => button.addEventListener('click', () => {
@@ -1225,18 +1246,25 @@
     if (!selectedCandidate) { panel.innerHTML = '<p>Выберите кандидат в очереди.</p>'; return; }
     const item = selectedCandidate;
     const editable = item.status === 'PENDING_REVIEW';
+    const practice = item.target === 'PRACTICE';
     panel.innerHTML = `
       <form id="candidate-form" class="candidate-form">
-        <div class="candidate-heading"><span>${escapeHtml(STATUS_LABELS[item.status] || item.status)} · v${item.version}</span><strong>${escapeHtml(item.sourceModel || 'модель не указана')}</strong></div>
+        <div class="candidate-heading"><span>${escapeHtml(TARGET_LABELS[item.target] || item.target)} · ${escapeHtml(STATUS_LABELS[item.status] || item.status)} · v${item.version}</span><strong>${escapeHtml(item.sourceModel || 'модель не указана')}</strong></div>
         ${item.rejectionReasons?.length ? `<div class="moderation-reasons"><strong>Автоматические причины</strong>${item.rejectionReasons.map(reason => `<span>${escapeHtml(reason)}</span>`).join('')}</div>` : ''}
-        <div class="candidate-grid"><label>Категория<input name="category" value="${escapeHtml(item.category || '')}" ${editable ? '' : 'disabled'}></label><label>Сложность<select name="difficulty" ${editable ? '' : 'disabled'}>${['L1','L2','L3'].map(level => `<option ${item.difficulty === level ? 'selected' : ''}>${level}</option>`).join('')}</select></label><label>Домен<input name="domain" value="${escapeHtml(item.domain || '')}" ${editable ? '' : 'disabled'}></label></div>
-        <label>Ситуация<textarea name="situation" rows="5" ${editable ? '' : 'disabled'}>${escapeHtml(item.situation || '')}</textarea></label>
-        <label>Вопрос<textarea name="question" rows="3" ${editable ? '' : 'disabled'}>${escapeHtml(item.question || '')}</textarea></label>
-        <label>Подсказка<textarea name="hint" rows="2" ${editable ? '' : 'disabled'}>${escapeHtml(item.hint || '')}</textarea></label>
-        <label>Объяснение<textarea name="explanation" rows="3" ${editable ? '' : 'disabled'}>${escapeHtml(item.explanation || '')}</textarea></label>
-        <label>Варианты (коды через запятую)<input name="options" value="${escapeHtml((item.options || []).join(', '))}" ${editable ? '' : 'disabled'}></label>
-        <div class="candidate-grid"><label>Правильная<input name="correctCategory" value="${escapeHtml(item.correctCategory || '')}" ${editable ? '' : 'disabled'}></label><label>Путают с<input name="confusedWith" value="${escapeHtml(item.confusedWith || '')}" ${editable ? '' : 'disabled'}></label></div>
-        <label>Контраст<textarea name="contrast" rows="2" ${editable ? '' : 'disabled'}>${escapeHtml(item.contrast || '')}</textarea></label>
+        ${practice ? `
+          <div class="candidate-grid"><label>Категория<input name="category" value="${escapeHtml(item.category || '')}" readonly></label><label>Домен<input name="domain" value="${escapeHtml(item.domain || '')}" ${editable ? '' : 'disabled'}></label></div>
+          <label>Ситуация<textarea name="situation" rows="7" ${editable ? '' : 'disabled'}>${escapeHtml(item.situation || '')}</textarea></label>
+          <label>Подсказка<textarea name="hint" rows="3" ${editable ? '' : 'disabled'}>${escapeHtml(item.hint || '')}</textarea></label>
+        ` : `
+          <div class="candidate-grid"><label>Категория<input name="category" value="${escapeHtml(item.category || '')}" ${editable ? '' : 'disabled'}></label><label>Сложность<select name="difficulty" ${editable ? '' : 'disabled'}>${['L1','L2','L3'].map(level => `<option ${item.difficulty === level ? 'selected' : ''}>${level}</option>`).join('')}</select></label><label>Домен<input name="domain" value="${escapeHtml(item.domain || '')}" ${editable ? '' : 'disabled'}></label></div>
+          <label>Ситуация<textarea name="situation" rows="5" ${editable ? '' : 'disabled'}>${escapeHtml(item.situation || '')}</textarea></label>
+          <label>Вопрос<textarea name="question" rows="3" ${editable ? '' : 'disabled'}>${escapeHtml(item.question || '')}</textarea></label>
+          <label>Подсказка<textarea name="hint" rows="2" ${editable ? '' : 'disabled'}>${escapeHtml(item.hint || '')}</textarea></label>
+          <label>Объяснение<textarea name="explanation" rows="3" ${editable ? '' : 'disabled'}>${escapeHtml(item.explanation || '')}</textarea></label>
+          <label>Варианты (коды через запятую)<input name="options" value="${escapeHtml((item.options || []).join(', '))}" ${editable ? '' : 'disabled'}></label>
+          <div class="candidate-grid"><label>Правильная<input name="correctCategory" value="${escapeHtml(item.correctCategory || '')}" ${editable ? '' : 'disabled'}></label><label>Путают с<input name="confusedWith" value="${escapeHtml(item.confusedWith || '')}" ${editable ? '' : 'disabled'}></label></div>
+          <label>Контраст<textarea name="contrast" rows="2" ${editable ? '' : 'disabled'}>${escapeHtml(item.contrast || '')}</textarea></label>
+        `}
         ${editable ? `<div class="candidate-actions"><button class="secondary-button" id="save-candidate" type="submit">Сохранить правки</button><button class="primary-button" id="approve-candidate" type="button">Опубликовать <span>→</span></button><button class="text-button danger" id="reject-candidate" type="button">Отклонить</button></div>` : ''}
       </form>`;
     if (editable) {
@@ -1248,6 +1276,14 @@
 
   function candidateDraft() {
     const form = new FormData($('#candidate-form'));
+    if (selectedCandidate.target === 'PRACTICE') {
+      return {
+        category: selectedCandidate.category, secondaryCategory: null, difficulty: null,
+        domain: form.get('domain'), situation: form.get('situation'), question: null,
+        hint: form.get('hint'), options: [], correctCategory: null,
+        explanation: null, confusedWith: null, contrast: null
+      };
+    }
     return {
       category: form.get('category'), secondaryCategory: null, difficulty: form.get('difficulty'),
       domain: form.get('domain'), situation: form.get('situation'), question: form.get('question'),
@@ -1268,9 +1304,11 @@
 
   async function approveCandidate() {
     try {
+      const target = selectedCandidate.target;
       await api(`/admin/scenario-candidates/${selectedCandidate.id}/approve`, { method: 'POST', body: JSON.stringify({ expectedVersion: selectedCandidate.version }) });
       selectedCandidate = null;
-      showToast('Кейс опубликован и доступен серверному тренажёру');
+      renderCandidateDetail();
+      showToast(target === 'PRACTICE' ? 'Кейс опубликован и доступен в практике' : 'Кейс опубликован и доступен в тренажёре');
       await loadModeration();
     } catch (error) { showToast(error.message); }
   }
@@ -1287,23 +1325,33 @@
     } catch (error) { showToast(error.message); }
   }
 
-  async function generateCandidates() {
-    const count = Number($('#moderation-count').value);
-    const button = $('#generate-candidates');
-    setBusy(button, true, 'Генерируем…');
+  async function generateCandidates(target) {
+    const buttons = $$('.moderation-generation-button');
+    if (buttons.some(button => button.disabled)) return;
+    const labels = new Map(buttons.map(button => [button, button.innerHTML]));
+    buttons.forEach(button => setBusy(button, true));
+    const activeButton = buttons.find(button => button.dataset.generationTarget === target);
+    if (activeButton) activeButton.textContent = 'Генерируем…';
     try {
-      const rows = await api('/admin/scenario-candidates/generate', { method: 'POST', body: JSON.stringify({ count, model: selectedModel }) });
+      const rows = await api('/admin/scenario-candidates/generate', { method: 'POST', body: JSON.stringify({ target, model: selectedModel }) });
       const rejected = rows.filter(item => item.status === 'AUTO_REJECTED').length;
       moderationStatus = 'PENDING_REVIEW';
       $$('.moderation-toolbar button').forEach(item => item.classList.toggle('is-active', item.dataset.moderationStatus === moderationStatus));
-      showToast(`В очередь: ${rows.length - rejected}; автоотказ: ${rejected}`);
+      showToast(rejected ? 'Кейс отправлен в автоотказ' : 'Кейс добавлен в очередь');
       await loadModeration();
     } catch (error) { showToast(error.message); }
-    finally { setBusy(button, false, 'В очередь →'); }
+    finally {
+      buttons.forEach(button => {
+        setBusy(button, false);
+        button.innerHTML = labels.get(button);
+      });
+    }
   }
 
   function bindModeration() {
-    $('#generate-candidates').addEventListener('click', generateCandidates);
+    $$('.moderation-generation-button').forEach(button => button.addEventListener('click', () => {
+      generateCandidates(button.dataset.generationTarget);
+    }));
     $$('.moderation-toolbar button').forEach(button => button.addEventListener('click', () => {
       moderationStatus = button.dataset.moderationStatus;
       selectedCandidate = null;
@@ -1352,7 +1400,7 @@
     bindChat();
     bindModeration();
     bindAcpStatus();
-    bindModelPicker();
+    bindModelPickers();
     setRoute(location.hash.slice(1) || 'theory', false);
     await Promise.allSettled([loadCurriculum(), refreshProgressView(), loadSystemStatus()]);
     if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});

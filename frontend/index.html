@@ -164,11 +164,11 @@
                   <span class="model-picker-label">Модель</span>
                   <button class="model-trigger" id="model-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="model-popover" disabled>
                     <span class="model-mark" id="model-mark">—</span>
-                    <span class="model-copy"><strong id="model-name">Модель недоступна</strong><small id="model-detail">Нет доступных моделей</small></span>
+                    <span class="model-copy"><strong class="model-name" id="model-name">Модель недоступна</strong><small class="model-detail" id="model-detail">Нет доступных моделей</small></span>
                     <span class="model-chevron" aria-hidden="true">⌄</span>
                   </button>
                   <div class="model-popover" id="model-popover" role="listbox" aria-label="Модель коуча" hidden></div>
-                  <select id="model-select" aria-hidden="true" tabindex="-1" hidden disabled><option>—</option></select>
+                  <select class="model-select" id="model-select" aria-hidden="true" tabindex="-1" hidden disabled><option>—</option></select>
                 </div>
               </div>
             </header>
@@ -214,7 +214,23 @@
 
       <section class="view" id="view-moderation" data-view="moderation">
         <div class="moderation-shell shell">
-          <header class="moderation-header"><div><div class="section-number">04 / КОНТУР КАЧЕСТВА</div><h1>Ни один кейс<br>не проходит напрямую.</h1></div><div class="moderation-generate"><label for="moderation-count">Количество<input id="moderation-count" type="number" min="1" max="20" value="7"></label><button class="primary-button" id="generate-candidates" type="button">В очередь <span>→</span></button></div></header>
+          <header class="moderation-header">
+            <div><div class="section-number">04 / КОНТУР КАЧЕСТВА</div><h1>Ни один кейс<br>не проходит напрямую.</h1></div>
+            <div class="moderation-generate">
+              <div class="model-picker moderation-model-picker">
+                <span class="model-picker-label">Модель</span>
+                <button class="model-trigger" id="moderation-model-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="moderation-model-popover" disabled>
+                  <span class="model-mark">—</span>
+                  <span class="model-copy"><strong class="model-name">Модель недоступна</strong><small class="model-detail">Нет доступных моделей</small></span>
+                  <span class="model-chevron" aria-hidden="true">⌄</span>
+                </button>
+                <div class="model-popover" id="moderation-model-popover" role="listbox" aria-label="Модель генерации" hidden></div>
+                <select class="model-select" aria-hidden="true" tabindex="-1" hidden disabled><option>—</option></select>
+              </div>
+              <button class="secondary-button moderation-generation-button" data-generation-target="PRACTICE" type="button">Для практики</button>
+              <button class="primary-button moderation-generation-button" data-generation-target="TRAINER" type="button">Для тренажёра <span>→</span></button>
+            </div>
+          </header>
           <div class="moderation-toolbar" role="group" aria-label="Фильтр очереди"><button class="is-active" data-moderation-status="PENDING_REVIEW">На проверке</button><button data-moderation-status="AUTO_REJECTED">Автоотказ</button><button data-moderation-status="REJECTED">Отклонено</button><button data-moderation-status="PUBLISHED">Опубликовано</button></div>
           <p class="moderation-status" id="moderation-status" role="status"></p>
           <div class="moderation-layout"><div class="candidate-list" id="candidate-list"></div><article class="candidate-detail" id="candidate-detail"><p>Выберите кандидат в очереди.</p></article></div>
