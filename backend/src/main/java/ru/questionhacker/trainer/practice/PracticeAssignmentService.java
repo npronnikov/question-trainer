@@ -31,8 +31,10 @@ public class PracticeAssignmentService {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Нет доступной ситуации для практики"));
         String guidance = source.operation() + " Контрольный ориентир: " + source.cue();
-        return view(practice.createAssignment(
-                ownerId, source, guidance, OffsetDateTime.now(ZoneOffset.UTC)));
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        var assignment = practice.createAssignment(ownerId, source, guidance, now);
+        practice.createEmptyDraft(ownerId, assignment.id(), now);
+        return view(assignment);
     }
 
     @Transactional(readOnly = true)
@@ -52,7 +54,7 @@ public class PracticeAssignmentService {
         return value;
     }
 
-    private AssignmentView view(PracticeRepository.AssignmentRow row) {
+    AssignmentView view(PracticeRepository.AssignmentRow row) {
         return new AssignmentView(
                 row.id(), row.domain(), row.situation(),
                 new TargetCategory(row.categoryCode(), row.categoryName(), row.guidance()),

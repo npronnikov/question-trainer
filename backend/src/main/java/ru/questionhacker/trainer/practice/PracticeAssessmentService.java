@@ -190,7 +190,7 @@ public class PracticeAssessmentService {
         }
     }
 
-    private AttemptView view(PracticeRepository.AttemptRow row) {
+    AttemptView view(PracticeRepository.AttemptRow row) {
         AssessmentView assessment = row.outcome() == null ? null : new AssessmentView(
                 row.outcome(), row.completenessStatus(), read(row.stepResultsJson(), new TypeReference<>() { }),
                 row.categoryFitScore(), row.categoryFitEvidence(), row.confusedWith(),

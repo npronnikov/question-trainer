@@ -79,6 +79,124 @@ public class PracticeRepository {
                 .stream().findFirst();
     }
 
+    public List<CycleSummaryRow> listCycles(UUID ownerId) {
+        return jdbc.query("""
+                SELECT assignment.id AS assignment_id,
+                       assignment.target_category_code, category.name AS category_name,
+                       assignment.domain_text, assignment.situation_text,
+                       CASE
+                         WHEN latest.status='EVALUATING' THEN 'EVALUATING'
+                         WHEN draft.assignment_id IS NOT NULL THEN 'DRAFT'
+                         ELSE COALESCE(latest.status, 'DRAFT')
+                       END AS cycle_status,
+                       COUNT(attempt.id) AS attempt_count,
+                       assignment.created_at,
+                       GREATEST(
+                         assignment.created_at,
+                         COALESCE(MAX(attempt.created_at), assignment.created_at),
+                         COALESCE(draft.updated_at, assignment.created_at)
+                       ) AS updated_at
+                FROM practice_assignment assignment
+                JOIN category category ON category.code=assignment.target_category_code
+                LEFT JOIN practice_attempt attempt ON attempt.assignment_id=assignment.id
+                LEFT JOIN practice_attempt latest ON latest.id=(
+                  SELECT candidate.id FROM practice_attempt candidate
+                  WHERE candidate.assignment_id=assignment.id
+                  ORDER BY candidate.attempt_number DESC
+                  LIMIT 1
+                )
+                LEFT JOIN practice_draft draft ON draft.assignment_id=assignment.id
+                WHERE assignment.owner_id=?
+                GROUP BY assignment.id, assignment.target_category_code, category.name,
+                         assignment.domain_text, assignment.situation_text,
+                         latest.status, draft.assignment_id, draft.updated_at,
+                         assignment.created_at
+                ORDER BY updated_at DESC, assignment.id
+                """, (rs, row) -> new CycleSummaryRow(
+                rs.getObject("assignment_id", UUID.class),
+                rs.getString("target_category_code"),
+                rs.getString("category_name"),
+                rs.getString("domain_text"),
+                rs.getString("situation_text"),
+                rs.getString("cycle_status"),
+                rs.getInt("attempt_count"),
+                rs.getObject("created_at", OffsetDateTime.class),
+                rs.getObject("updated_at", OffsetDateTime.class)), ownerId);
+    }
+
+    public List<AttemptRow> listAttempts(UUID ownerId, UUID assignmentId) {
+        return queryAttempts("pa.owner_id=? AND pa.assignment_id=? ORDER BY pa.attempt_number",
+                ownerId, assignmentId);
+    }
+
+    public void createEmptyDraft(UUID ownerId, UUID assignmentId, OffsetDateTime now) {
+        jdbc.update("""
+                INSERT INTO practice_draft(
+                  assignment_id, owner_id, base_attempt_id, question_text,
+                  answer_text, reasoning_text, solution_text, updated_at
+                ) VALUES (?, ?, NULL, '', '', '', '', ?)
+                """, assignmentId, ownerId, now);
+    }
+
+    public Optional<DraftRow> findDraft(UUID ownerId, UUID assignmentId) {
+        return jdbc.query("""
+                SELECT assignment_id, owner_id, base_attempt_id, question_text,
+                       answer_text, reasoning_text, solution_text, updated_at
+                FROM practice_draft
+                WHERE owner_id=? AND assignment_id=?
+                """, (rs, row) -> new DraftRow(
+                rs.getObject("assignment_id", UUID.class),
+                rs.getObject("owner_id", UUID.class),
+                rs.getObject("base_attempt_id", UUID.class),
+                rs.getString("question_text"),
+                rs.getString("answer_text"),
+                rs.getString("reasoning_text"),
+                rs.getString("solution_text"),
+                rs.getObject("updated_at", OffsetDateTime.class)), ownerId, assignmentId)
+                .stream().findFirst();
+    }
+
+    public DraftRow saveDraft(UUID ownerId, UUID assignmentId, UUID baseAttemptId,
+                              String question, String answer, String reasoning, String solution,
+                              OffsetDateTime now) {
+        jdbc.update("""
+                MERGE INTO practice_draft(
+                  assignment_id, owner_id, base_attempt_id, question_text,
+                  answer_text, reasoning_text, solution_text, updated_at
+                ) KEY(assignment_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, assignmentId, ownerId, baseAttemptId, question, answer, reasoning, solution, now);
+        return findDraft(ownerId, assignmentId).orElseThrow();
+    }
+
+    public void deleteDraft(UUID ownerId, UUID assignmentId) {
+        jdbc.update("DELETE FROM practice_draft WHERE owner_id=? AND assignment_id=?",
+                ownerId, assignmentId);
+    }
+
+    public Optional<ExampleRow> randomExample() {
+        return jdbc.query("""
+                SELECT example.id, example.category_code, category.name AS category_name,
+                       example.domain_text, example.situation_text, example.question_text,
+                       example.answer_text, example.reasoning_text, example.solution_text,
+                       example.recommendation_text
+                FROM practice_example example
+                JOIN category category ON category.code=example.category_code
+                WHERE example.published=TRUE
+                ORDER BY RAND()
+                LIMIT 1
+                """, (rs, row) -> new ExampleRow(
+                rs.getObject("id", UUID.class),
+                rs.getString("category_code"),
+                rs.getString("category_name"),
+                rs.getString("domain_text"),
+                rs.getString("situation_text"),
+                rs.getString("question_text"),
+                rs.getString("answer_text"),
+                rs.getString("reasoning_text"),
+                rs.getString("solution_text"),
+                rs.getString("recommendation_text"))).stream().findFirst();
+    }
+
     public Optional<AttemptRow> findAttemptByIdempotency(UUID ownerId, String idempotencyKey) {
         if (idempotencyKey == null) return Optional.empty();
         return queryAttempts("pa.owner_id=? AND pa.idempotency_key=?", ownerId, idempotencyKey)
@@ -245,6 +363,42 @@ public class PracticeRepository {
             String situation,
             String guidance,
             OffsetDateTime createdAt) {
+    }
+
+    public record CycleSummaryRow(
+            UUID assignmentId,
+            String categoryCode,
+            String categoryName,
+            String domain,
+            String situation,
+            String status,
+            int attemptCount,
+            OffsetDateTime createdAt,
+            OffsetDateTime updatedAt) {
+    }
+
+    public record DraftRow(
+            UUID assignmentId,
+            UUID ownerId,
+            UUID baseAttemptId,
+            String question,
+            String answer,
+            String reasoning,
+            String solution,
+            OffsetDateTime updatedAt) {
+    }
+
+    public record ExampleRow(
+            UUID id,
+            String categoryCode,
+            String categoryName,
+            String domain,
+            String situation,
+            String question,
+            String answer,
+            String reasoning,
+            String solution,
+            String recommendation) {
     }
 
     public record AttemptRow(

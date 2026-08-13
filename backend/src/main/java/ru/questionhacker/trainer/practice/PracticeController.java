@@ -11,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -25,14 +26,43 @@ public class PracticeController {
 
     private final PracticeAssignmentService assignments;
     private final PracticeAssessmentService assessments;
+    private final PracticeCycleService cycles;
     private final AuthService auth;
 
     public PracticeController(PracticeAssignmentService assignments,
                               PracticeAssessmentService assessments,
+                              PracticeCycleService cycles,
                               AuthService auth) {
         this.assignments = assignments;
         this.assessments = assessments;
+        this.cycles = cycles;
         this.auth = auth;
+    }
+
+    @GetMapping("/cycles")
+    public java.util.List<PracticeCycleService.CycleSummary> cycles() {
+        return cycles.list(auth.requireCurrentUser().id());
+    }
+
+    @GetMapping("/cycles/{assignmentId}")
+    public PracticeCycleService.CycleView cycle(@PathVariable UUID assignmentId) {
+        return cycles.get(auth.requireCurrentUser().id(), assignmentId);
+    }
+
+    @PutMapping("/cycles/{assignmentId}/draft")
+    public PracticeCycleService.DraftView saveDraft(
+            @PathVariable UUID assignmentId,
+            @Valid @RequestBody DraftRequest request) {
+        return cycles.saveDraft(auth.requireCurrentUser().id(), assignmentId,
+                new PracticeCycleService.DraftInput(
+                        request.baseAttemptId(), request.question(), request.answer(),
+                        request.reasoning(), request.solution()));
+    }
+
+    @GetMapping("/examples/random")
+    public PracticeCycleService.ExampleView randomExample() {
+        auth.requireCurrentUser();
+        return cycles.randomExample();
     }
 
     @PostMapping("/assignments")
@@ -100,5 +130,13 @@ public class PracticeController {
             @Size(max = 3000) String solution,
             @Size(max = 120) String model,
             @Size(max = 100) String idempotencyKey) {
+    }
+
+    public record DraftRequest(
+            UUID baseAttemptId,
+            @NotNull @Size(max = 1800) String question,
+            @NotNull @Size(max = 3000) String answer,
+            @NotNull @Size(max = 5000) String reasoning,
+            @NotNull @Size(max = 3000) String solution) {
     }
 }
