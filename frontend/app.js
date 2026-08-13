@@ -746,6 +746,26 @@
     }
   }
 
+  function resetPracticeHint(hint) {
+    const toggle = $('#practice-hint-toggle');
+    const content = $('#practice-hint');
+    hint = String(hint || '').trim();
+    content.textContent = hint;
+    content.hidden = true;
+    toggle.hidden = !hint;
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.textContent = 'Показать подсказку';
+  }
+
+  function togglePracticeHint() {
+    const toggle = $('#practice-hint-toggle');
+    const content = $('#practice-hint');
+    const reveal = content.hidden;
+    content.hidden = !reveal;
+    toggle.setAttribute('aria-expanded', String(reveal));
+    toggle.textContent = reveal ? 'Скрыть подсказку' : 'Показать подсказку';
+  }
+
   function renderPracticeCycle(cycle, focusFeedback = false) {
     practiceSubmitting = false;
     practiceAssignment = cycle.assignment;
@@ -757,6 +777,7 @@
     $('#practice-domain').textContent = `${practiceAssignment.domain} · ${practiceAssignment.targetCategory.name}`;
     $('#practice-situation').textContent = practiceAssignment.situation;
     $('#practice-guidance').textContent = practiceAssignment.targetCategory.guidance;
+    resetPracticeHint(practiceAssignment.hint);
     Object.keys(FIELD_LABELS).forEach(field => {
       $(`#practice-${field}`).value = cycle.editor[field] || '';
     });
@@ -995,6 +1016,7 @@
   function bindPractice() {
     $('#start-practice').addEventListener('click', startPractice);
     $('#new-practice').addEventListener('click', startPractice);
+    $('#practice-hint-toggle').addEventListener('click', togglePracticeHint);
     $('#practice-form').addEventListener('submit', submitPractice);
     $('#practice-form').addEventListener('input', () => {
       updatePracticeProgress();

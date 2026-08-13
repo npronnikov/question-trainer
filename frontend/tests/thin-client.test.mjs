@@ -31,6 +31,19 @@ test('practice exposes server history, worked example, timeline, and draft statu
   assert.doesNotMatch(app, /localStorage|indexedDB/);
 });
 
+test('practice keeps the server hint hidden until the learner asks for it', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(html, /id="practice-hint-toggle"[^>]*aria-expanded="false"[^>]*aria-controls="practice-hint"[^>]*hidden/);
+  assert.match(html, /id="practice-hint"[^>]*hidden/);
+  assert.match(app, /function resetPracticeHint\(hint\)/);
+  assert.match(app, /resetPracticeHint\(practiceAssignment\.hint\)/);
+  assert.match(app, /content\.hidden = true/);
+  assert.match(app, /toggle\.hidden = !hint/);
+  assert.match(app, /toggle\.setAttribute\('aria-expanded', String\(reveal\)\)/);
+});
+
 test('browser contains no curriculum, answer, scoring, or mastery authority', async () => {
   const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
