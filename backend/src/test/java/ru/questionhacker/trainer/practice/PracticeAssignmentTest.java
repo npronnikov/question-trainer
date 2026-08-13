@@ -1,6 +1,7 @@
 package ru.questionhacker.trainer.practice;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -8,19 +9,28 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import ru.questionhacker.trainer.auth.AppUser;
 import ru.questionhacker.trainer.auth.UserAccountRepository;
+import ru.questionhacker.trainer.moderation.ScenarioGenerationGateway;
 
 @SpringBootTest(properties = {
         "app.acp.enabled=false",
@@ -38,58 +48,165 @@ class PracticeAssignmentTest {
     @Autowired
     private UserAccountRepository users;
 
+    @Autowired
+    private ObjectMapper json;
+
+    @MockitoBean
+    private ScenarioGenerationGateway generator;
+
     private AppUser alice;
+    private AppUser bob;
 
     @BeforeEach
     void resetUserData() {
+        jdbc.update("DELETE FROM practice_draft");
         jdbc.update("DELETE FROM practice_assessment");
         jdbc.update("DELETE FROM practice_attempt");
         jdbc.update("DELETE FROM practice_assignment");
+        jdbc.update("DELETE FROM moderation_action");
+        jdbc.update("DELETE FROM scenario_candidate");
         jdbc.update("DELETE FROM user_role");
         jdbc.update("DELETE FROM app_user WHERE id <> ?", UserAccountRepository.SYSTEM_USER_ID);
         alice = users.create("practice-alice", null, "$2a$alice", Set.of("USER"), false);
-        users.create("practice-bob", null, "$2a$bob", Set.of("USER"), false);
+        bob = users.create("practice-bob", null, "$2a$bob", Set.of("USER"), false);
     }
 
     @Test
-    void issuesServerOwnedAssignmentForRequestedCategory() throws Exception {
-        String response = mvc.perform(post("/api/practice/assignments")
-                        .with(user("practice-alice")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"targetCategory\":\"INVERSION\"}"))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.assignmentId").isNotEmpty())
-                .andExpect(jsonPath("$.domain").isNotEmpty())
-                .andExpect(jsonPath("$.situation").isNotEmpty())
-                .andExpect(jsonPath("$.targetCategory.code").value("INVERSION"))
-                .andExpect(jsonPath("$.targetCategory.name").value("Инверсия"))
-                .andExpect(jsonPath("$.targetCategory.guidance").isNotEmpty())
-                .andExpect(jsonPath("$.correctCategory").doesNotExist())
-                .andExpect(jsonPath("$.explanation").doesNotExist())
-                .andReturn().getResponse().getContentAsString();
-
-        String id = response.replaceAll(".*\\\"assignmentId\\\":\\\"([^\\\"]+)\\\".*", "$1");
-        assertThat(jdbc.queryForObject(
-                "SELECT owner_id FROM practice_assignment WHERE id=?",
-                java.util.UUID.class, java.util.UUID.fromString(id))).isEqualTo(alice.id());
-    }
-
-    @Test
-    void assignmentReadIsOwnerOnlyAndUnknownCategoryIsRejected() throws Exception {
-        String response = mvc.perform(post("/api/practice/assignments")
+    void builtInScenariosAreNotPracticeCatalog() throws Exception {
+        mvc.perform(post("/api/practice/assignments")
                         .with(user("practice-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isCreated())
-                .andReturn().getResponse().getContentAsString();
-        String id = response.replaceAll(".*\\\"assignmentId\\\":\\\"([^\\\"]+)\\\".*", "$1");
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PRACTICE_CATALOG_EXHAUSTED"))
+                .andExpect(jsonPath("$.detail").value(
+                        "Вы прошли все доступные ситуации. Дождитесь, пока администратор добавит новые."));
 
-        mvc.perform(get("/api/practice/assignments/{id}", id).with(user("practice-bob")))
-                .andExpect(status().isNotFound());
+        verifyNoInteractions(generator);
+    }
 
+    @Test
+    void clientCannotChooseItsNextCategory() throws Exception {
         mvc.perform(post("/api/practice/assignments")
                         .with(user("practice-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"targetCategory\":\"FUTURISM\"}"))
+                        .content("{\"targetCategory\":\"SIMPLIFICATION\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void unfinishedDraftBlocksAnotherAssignment() throws Exception {
+        publishForPractice("INVERSION", 0);
+        publishForPractice("HYPERBOLE", 0);
+        assignment("practice-alice");
+
+        mvc.perform(post("/api/practice/assignments")
+                        .with(user("practice-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PRACTICE_ASSIGNMENT_INCOMPLETE"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"EVALUATING", "NEEDS_REVISION", "UNVERIFIED"})
+    void everyNonPassedLatestStatusBlocksAnotherAssignment(String attemptStatus) throws Exception {
+        publishForPractice("INVERSION", 0);
+        publishForPractice("HYPERBOLE", 0);
+        UUID assignmentId = assignment("practice-alice");
+        replaceDraftWithAttempt(assignmentId, alice.id(), attemptStatus);
+
+        mvc.perform(post("/api/practice/assignments")
+                        .with(user("practice-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PRACTICE_ASSIGNMENT_INCOMPLETE"));
+    }
+
+    @Test
+    void eachUserCyclesCategoriesAndNeverRepeatsAScenario() throws Exception {
+        List<String> categories = List.of(
+                "INVERSION", "HYPERBOLE", "CROSS_DISCIPLINE", "BACKCASTING",
+                "PROVOCATION", "REFRAMING", "SIMPLIFICATION");
+        categories.forEach(category -> publishForPractice(category, 0));
+        publishForPractice("INVERSION", 1);
+
+        List<String> issued = new ArrayList<>();
+        Set<UUID> scenarios = new HashSet<>();
+        for (int index = 0; index < 8; index++) {
+            UUID assignmentId = assignment("practice-alice");
+            issued.add(jdbc.queryForObject(
+                    "SELECT target_category_code FROM practice_assignment WHERE id=?",
+                    String.class, assignmentId));
+            scenarios.add(jdbc.queryForObject(
+                    "SELECT scenario_id FROM practice_assignment WHERE id=?",
+                    UUID.class, assignmentId));
+            replaceDraftWithAttempt(assignmentId, alice.id(), "PASSED");
+        }
+
+        assertThat(issued).containsExactly(
+                "INVERSION", "HYPERBOLE", "CROSS_DISCIPLINE", "BACKCASTING",
+                "PROVOCATION", "REFRAMING", "SIMPLIFICATION", "INVERSION");
+        assertThat(scenarios).hasSize(8);
+    }
+
+    @Test
+    void categoryPositionIsIndependentForEachUser() throws Exception {
+        publishForPractice("INVERSION", 0);
+
+        UUID aliceAssignment = assignment("practice-alice");
+        UUID bobAssignment = assignment("practice-bob");
+
+        assertThat(category(aliceAssignment)).isEqualTo("INVERSION");
+        assertThat(category(bobAssignment)).isEqualTo("INVERSION");
+    }
+
+    @Test
+    void assignmentReadRemainsOwnerOnly() throws Exception {
+        publishForPractice("INVERSION", 0);
+        UUID assignmentId = assignment("practice-alice");
+
+        mvc.perform(get("/api/practice/assignments/{id}", assignmentId)
+                        .with(user("practice-bob")))
+                .andExpect(status().isNotFound());
+    }
+
+    private UUID publishForPractice(String category, int offset) {
+        UUID scenarioId = jdbc.queryForObject("""
+                SELECT id FROM scenario WHERE category_code=? AND published=TRUE
+                ORDER BY external_key LIMIT 1 OFFSET ?
+                """, UUID.class, category, offset);
+        jdbc.update("""
+                INSERT INTO scenario_candidate(
+                  id, status, version_number, category_code, rejection_reasons_json,
+                  warnings_json, published_scenario_id, created_at, updated_at
+                ) VALUES (?, 'PUBLISHED', 1, ?, '[]', '[]', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, UUID.randomUUID(), category, scenarioId);
+        return scenarioId;
+    }
+
+    private UUID assignment(String username) throws Exception {
+        String response = mvc.perform(post("/api/practice/assignments")
+                        .with(user(username)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return UUID.fromString(json.readTree(response).path("assignmentId").asText());
+    }
+
+    private void replaceDraftWithAttempt(UUID assignmentId, UUID ownerId, String status) {
+        jdbc.update("DELETE FROM practice_draft WHERE assignment_id=?", assignmentId);
+        jdbc.update("""
+                INSERT INTO practice_attempt(
+                  id, assignment_id, owner_id, parent_attempt_id, attempt_number,
+                  question_text, answer_text, reasoning_text, solution_text,
+                  revised_fields_json, status, created_at, completed_at
+                ) VALUES (?, ?, ?, NULL, 1, 'question', 'answer', 'reasoning',
+                          'solution', '[]', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, UUID.randomUUID(), assignmentId, ownerId, status);
+    }
+
+    private String category(UUID assignmentId) {
+        return jdbc.queryForObject(
+                "SELECT target_category_code FROM practice_assignment WHERE id=?",
+                String.class, assignmentId);
     }
 }

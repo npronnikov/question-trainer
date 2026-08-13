@@ -2,8 +2,7 @@ package ru.questionhacker.trainer.practice;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.Locale;
-import java.util.Set;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -14,10 +13,6 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class PracticeAssignmentService {
 
-    private static final Set<String> CATEGORIES = Set.of(
-            "INVERSION", "HYPERBOLE", "CROSS_DISCIPLINE", "BACKCASTING",
-            "PROVOCATION", "REFRAMING", "SIMPLIFICATION");
-
     private final PracticeRepository practice;
 
     public PracticeAssignmentService(PracticeRepository practice) {
@@ -25,11 +20,19 @@ public class PracticeAssignmentService {
     }
 
     @Transactional
-    public AssignmentView create(UUID ownerId, String requestedCategory) {
-        String category = normalizeCategory(requestedCategory);
+    public AssignmentView create(UUID ownerId) {
+        practice.lockOwner(ownerId);
+        if (practice.hasUnfinishedAssignment(ownerId)) {
+            throw PracticeAssignmentUnavailableException.incomplete();
+        }
+        List<String> categories = practice.categoryCodes();
+        if (categories.isEmpty()) {
+            throw PracticeAssignmentUnavailableException.exhausted();
+        }
+        long position = practice.assignmentCount(ownerId);
+        String category = categories.get((int) (position % categories.size()));
         var source = practice.selectAssignmentSource(ownerId, category)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Нет доступной ситуации для практики"));
+                .orElseThrow(PracticeAssignmentUnavailableException::exhausted);
         String guidance = source.operation() + " Контрольный ориентир: " + source.cue();
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         var assignment = practice.createAssignment(ownerId, source, guidance, now);
@@ -43,15 +46,6 @@ public class PracticeAssignmentService {
                 .map(this::view)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Практика не найдена"));
-    }
-
-    private String normalizeCategory(String raw) {
-        if (raw == null || raw.isBlank()) return null;
-        String value = raw.strip().toUpperCase(Locale.ROOT);
-        if (!CATEGORIES.contains(value)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестная категория");
-        }
-        return value;
     }
 
     AssignmentView view(PracticeRepository.AssignmentRow row) {

@@ -5,6 +5,7 @@ import java.util.UUID;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Null;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -69,8 +70,7 @@ public class PracticeController {
     @ResponseStatus(HttpStatus.CREATED)
     public PracticeAssignmentService.AssignmentView createAssignment(
             @Valid @RequestBody(required = false) AssignmentRequest request) {
-        return assignments.create(auth.requireCurrentUser().id(),
-                request == null ? null : request.targetCategory());
+        return assignments.create(auth.requireCurrentUser().id());
     }
 
     @GetMapping("/assignments/{assignmentId}")
@@ -110,7 +110,7 @@ public class PracticeController {
         return assessments.events(auth.requireCurrentUser().id(), attemptId);
     }
 
-    public record AssignmentRequest(@Size(max = 40) String targetCategory) {
+    public record AssignmentRequest(@Null String targetCategory) {
     }
 
     public record AttemptRequest(

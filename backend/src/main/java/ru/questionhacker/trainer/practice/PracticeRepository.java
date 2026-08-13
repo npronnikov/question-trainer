@@ -3,7 +3,6 @@ package ru.questionhacker.trainer.practice;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,27 +20,56 @@ public class PracticeRepository {
         this.jdbc = jdbc;
     }
 
+    public void lockOwner(UUID ownerId) {
+        jdbc.queryForObject(
+                "SELECT id FROM app_user WHERE id=? FOR UPDATE", UUID.class, ownerId);
+    }
+
+    public List<String> categoryCodes() {
+        return jdbc.queryForList("SELECT code FROM category ORDER BY sort_order", String.class);
+    }
+
+    public long assignmentCount(UUID ownerId) {
+        Long count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM practice_assignment WHERE owner_id=?",
+                Long.class, ownerId);
+        return count == null ? 0L : count;
+    }
+
+    public boolean hasUnfinishedAssignment(UUID ownerId) {
+        Integer count = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM practice_assignment assignment
+                WHERE assignment.owner_id=?
+                  AND COALESCE((
+                    SELECT attempt.status FROM practice_attempt attempt
+                    WHERE attempt.assignment_id=assignment.id
+                    ORDER BY attempt.attempt_number DESC
+                    LIMIT 1
+                  ), 'DRAFT') <> 'PASSED'
+                """, Integer.class, ownerId);
+        return count != null && count > 0;
+    }
+
     public Optional<AssignmentSource> selectAssignmentSource(UUID ownerId, String targetCategory) {
-        String categoryClause = targetCategory == null ? "" : " AND s.category_code=? ";
-        String sql = """
+        return jdbc.query("""
                 SELECT s.id AS scenario_id, s.category_code, c.name,
                        c.operation_text, c.cue_text, s.domain_text, s.situation_text
                 FROM scenario s
                 JOIN category c ON c.code=s.category_code
-                WHERE s.published=TRUE
-                """ + categoryClause + """
-                ORDER BY CASE WHEN EXISTS (
-                  SELECT 1 FROM practice_assignment pa
-                  WHERE pa.owner_id=? AND pa.scenario_id=s.id
-                ) THEN 1 ELSE 0 END,
-                CASE s.difficulty WHEN 'L2' THEN 1 WHEN 'L3' THEN 2 ELSE 3 END,
-                s.external_key
+                WHERE s.published=TRUE AND s.category_code=?
+                  AND EXISTS (
+                    SELECT 1 FROM scenario_candidate candidate
+                    WHERE candidate.status='PUBLISHED'
+                      AND candidate.published_scenario_id=s.id
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM practice_assignment assignment
+                    WHERE assignment.owner_id=? AND assignment.scenario_id=s.id
+                  )
+                ORDER BY CASE s.difficulty WHEN 'L2' THEN 1 WHEN 'L3' THEN 2 ELSE 3 END,
+                         s.external_key
                 LIMIT 1
-                """;
-        List<Object> args = new ArrayList<>();
-        if (targetCategory != null) args.add(targetCategory);
-        args.add(ownerId);
-        return jdbc.query(sql, this::source, args.toArray()).stream().findFirst();
+                """, this::source, targetCategory, ownerId).stream().findFirst();
     }
 
     public AssignmentRow createAssignment(UUID ownerId, AssignmentSource source,

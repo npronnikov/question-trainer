@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import ru.questionhacker.trainer.practice.PracticeAssignmentUnavailableException;
+
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
@@ -30,6 +32,13 @@ public class ApiExceptionHandler {
                 fields.putIfAbsent(field.getField(), field.getDefaultMessage()));
         ProblemDetail result = problem(HttpStatus.BAD_REQUEST.value(), "Проверьте поля запроса");
         result.setProperty("errors", fields);
+        return result;
+    }
+
+    @ExceptionHandler(PracticeAssignmentUnavailableException.class)
+    ProblemDetail practiceUnavailable(PracticeAssignmentUnavailableException error) {
+        ProblemDetail result = problem(error.status().value(), error.getMessage());
+        result.setProperty("code", error.code());
         return result;
     }
 

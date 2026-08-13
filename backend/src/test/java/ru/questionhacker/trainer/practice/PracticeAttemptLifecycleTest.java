@@ -63,6 +63,8 @@ class PracticeAttemptLifecycleTest {
         jdbc.update("DELETE FROM practice_assessment");
         jdbc.update("DELETE FROM practice_attempt");
         jdbc.update("DELETE FROM practice_assignment");
+        jdbc.update("DELETE FROM moderation_action");
+        jdbc.update("DELETE FROM scenario_candidate");
         jdbc.update("DELETE FROM user_role");
         jdbc.update("DELETE FROM app_user WHERE id <> ?", UserAccountRepository.SYSTEM_USER_ID);
         users.create("assessment-alice", null, "$2a$alice", Set.of("USER"), false);
@@ -228,11 +230,27 @@ class PracticeAttemptLifecycleTest {
     }
 
     private UUID assignment(String username) throws Exception {
+        publishForPractice("INVERSION", 0);
         String response = mvc.perform(post("/api/practice/assignments")
                         .with(user(username)).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"targetCategory\":\"INVERSION\"}"))
-                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.targetCategory.code").value("INVERSION"))
+                .andReturn().getResponse().getContentAsString();
         return UUID.fromString(json.readTree(response).path("assignmentId").asText());
+    }
+
+    private void publishForPractice(String category, int offset) {
+        UUID scenarioId = jdbc.queryForObject("""
+                SELECT id FROM scenario WHERE category_code=? AND published=TRUE
+                ORDER BY external_key LIMIT 1 OFFSET ?
+                """, UUID.class, category, offset);
+        jdbc.update("""
+                INSERT INTO scenario_candidate(
+                  id, status, version_number, category_code, rejection_reasons_json,
+                  warnings_json, published_scenario_id, created_at, updated_at
+                ) VALUES (?, 'PUBLISHED', 1, ?, '[]', '[]', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, UUID.randomUUID(), category, scenarioId);
     }
 
     private UUID submit(String username, UUID assignment, String key) throws Exception {

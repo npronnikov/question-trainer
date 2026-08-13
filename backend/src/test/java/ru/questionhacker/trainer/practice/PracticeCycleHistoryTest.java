@@ -24,6 +24,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 import ru.questionhacker.trainer.auth.UserAccountRepository;
+import ru.questionhacker.trainer.auth.AppUser;
 
 @SpringBootTest(properties = {
         "app.acp.enabled=false",
@@ -44,16 +45,20 @@ class PracticeCycleHistoryTest {
     @Autowired
     private ObjectMapper json;
 
+    private AppUser alice;
+
     @BeforeEach
     void resetUserData() {
         jdbc.update("DELETE FROM practice_draft");
         jdbc.update("DELETE FROM practice_assessment");
         jdbc.update("DELETE FROM practice_attempt");
         jdbc.update("DELETE FROM practice_assignment");
+        jdbc.update("DELETE FROM moderation_action");
+        jdbc.update("DELETE FROM scenario_candidate");
         jdbc.update("UPDATE practice_example SET published=TRUE");
         jdbc.update("DELETE FROM user_role");
         jdbc.update("DELETE FROM app_user WHERE id <> ?", UserAccountRepository.SYSTEM_USER_ID);
-        users.create("history-alice", null, "$2a$alice", Set.of("USER"), false);
+        alice = users.create("history-alice", null, "$2a$alice", Set.of("USER"), false);
         users.create("history-bob", null, "$2a$bob", Set.of("USER"), false);
     }
 
@@ -77,9 +82,10 @@ class PracticeCycleHistoryTest {
     @Test
     void autosaveRestoresAllFieldsAndMovesCycleToTop() throws Exception {
         UUID older = assignment("history-alice", "INVERSION");
+        pass(older, alice.id());
         UUID newer = assignment("history-alice", "HYPERBOLE");
-        jdbc.update("UPDATE practice_assignment SET created_at=DATEADD('DAY', -1, created_at) WHERE id=?", older);
-        jdbc.update("UPDATE practice_draft SET updated_at=DATEADD('DAY', -1, updated_at) WHERE assignment_id=?", older);
+        jdbc.update("UPDATE practice_assignment SET created_at=DATEADD('DAY', -1, created_at) WHERE id=?", newer);
+        jdbc.update("UPDATE practice_draft SET updated_at=DATEADD('DAY', -1, updated_at) WHERE assignment_id=?", newer);
 
         String question = "Какой вопрос изменит рамку и покажет скрытое ограничение этой ситуации?";
         String body = json.createObjectNode()
@@ -89,23 +95,23 @@ class PracticeCycleHistoryTest {
                 .put("reasoning", "Черновик хранит развёрнутую цепочку рассуждения на стороне сервера.")
                 .put("solution", "Вернуться к циклу после перезагрузки и продолжить работу.")
                 .toString();
-        mvc.perform(put("/api/practice/cycles/{id}/draft", older)
+        mvc.perform(put("/api/practice/cycles/{id}/draft", newer)
                         .with(user("history-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.question").value(question));
 
-        mvc.perform(get("/api/practice/cycles/{id}", older).with(user("history-alice")))
+        mvc.perform(get("/api/practice/cycles/{id}", newer).with(user("history-alice")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.draft.question").value(question))
                 .andExpect(jsonPath("$.editor.question").value(question))
                 .andExpect(jsonPath("$.editor.editableFields.length()").value(4))
                 .andExpect(jsonPath("$.attempts").isEmpty());
         mvc.perform(get("/api/practice/cycles").with(user("history-alice")))
-                .andExpect(jsonPath("$[0].assignmentId").value(older.toString()))
-                .andExpect(jsonPath("$[1].assignmentId").value(newer.toString()));
+                .andExpect(jsonPath("$[0].assignmentId").value(newer.toString()))
+                .andExpect(jsonPath("$[1].assignmentId").value(older.toString()));
 
-        mvc.perform(put("/api/practice/cycles/{id}/draft", older)
+        mvc.perform(put("/api/practice/cycles/{id}/draft", newer)
                         .with(user("history-bob")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isNotFound());
@@ -132,12 +138,39 @@ class PracticeCycleHistoryTest {
     }
 
     private UUID assignment(String username, String category) throws Exception {
+        publishForPractice(category, 0);
         String response = mvc.perform(post("/api/practice/assignments")
                         .with(user(username)).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"targetCategory\":\"" + category + "\"}"))
+                        .content("{}"))
                 .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.targetCategory.code").value(category))
                 .andReturn().getResponse().getContentAsString();
         return UUID.fromString(json.readTree(response).path("assignmentId").asText());
+    }
+
+    private void publishForPractice(String category, int offset) {
+        UUID scenarioId = jdbc.queryForObject("""
+                SELECT id FROM scenario WHERE category_code=? AND published=TRUE
+                ORDER BY external_key LIMIT 1 OFFSET ?
+                """, UUID.class, category, offset);
+        jdbc.update("""
+                INSERT INTO scenario_candidate(
+                  id, status, version_number, category_code, rejection_reasons_json,
+                  warnings_json, published_scenario_id, created_at, updated_at
+                ) VALUES (?, 'PUBLISHED', 1, ?, '[]', '[]', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, UUID.randomUUID(), category, scenarioId);
+    }
+
+    private void pass(UUID assignmentId, UUID ownerId) {
+        jdbc.update("DELETE FROM practice_draft WHERE assignment_id=?", assignmentId);
+        jdbc.update("""
+                INSERT INTO practice_attempt(
+                  id, assignment_id, owner_id, parent_attempt_id, attempt_number,
+                  question_text, answer_text, reasoning_text, solution_text,
+                  revised_fields_json, status, created_at, completed_at
+                ) VALUES (?, ?, ?, NULL, 1, 'question', 'answer', 'reasoning',
+                          'solution', '[]', 'PASSED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, UUID.randomUUID(), assignmentId, ownerId);
     }
 }
