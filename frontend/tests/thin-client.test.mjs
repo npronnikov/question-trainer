@@ -15,6 +15,22 @@ test('practice is a labelled four-step server assessment', async () => {
   assert.match(html, /id="trainer-rationale"/);
 });
 
+test('practice exposes server history, worked example, timeline, and draft status regions', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(html, /id="practice-history-tools"/);
+  assert.match(html, /id="practice-cycle-list"[^>]*role="list"/);
+  assert.match(html, /id="practice-example"/);
+  for (const field of ['question', 'answer', 'reasoning', 'solution']) {
+    assert.match(html, new RegExp(`id="practice-example-${field}"`));
+  }
+  assert.match(html, /id="practice-example-recommendation"/);
+  assert.match(html, /id="practice-timeline"/);
+  assert.match(html, /id="practice-save-status"[^>]*aria-live="polite"/);
+  assert.doesNotMatch(app, /localStorage|indexedDB/);
+});
+
 test('browser contains no curriculum, answer, scoring, or mastery authority', async () => {
   const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');

@@ -314,6 +314,18 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visib
 .sidebar-head { display: flex; justify-content: space-between; align-items: center; padding: 0 8px 24px; }
 .sidebar-head h2 { margin: 7px 0 0; font-size: 28px; }
 .sidebar-route-copy { margin: 0 8px 24px; color: #b8bab1; font-size: 13px; line-height: 1.55; }
+.practice-history-tools { min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 12px; margin-bottom: 18px; }
+.practice-history-actions { display: grid; grid-template-columns: auto 1fr; gap: 7px; }
+.practice-history-actions .secondary-button { color: var(--paper); border-color: var(--white-line); font-size: 11px; }
+.practice-history-actions .secondary-button:hover { color: var(--ink); }
+.practice-history-status { min-height: 16px; margin: 0 5px; color: #92948b; font: 9px var(--mono); text-transform: uppercase; letter-spacing: .07em; }
+.practice-cycle-list { min-height: 0; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+.practice-cycle-row { width: 100%; display: grid; gap: 7px; padding: 13px; border: 1px solid var(--white-line); border-radius: 13px; background: transparent; color: #c4c6bd; text-align: left; cursor: pointer; }
+.practice-cycle-row:hover, .practice-cycle-row:focus-visible { background: rgba(255,255,255,.07); color: white; }
+.practice-cycle-row[aria-current="true"] { border-color: var(--acid); background: var(--acid); color: var(--ink); }
+.practice-cycle-meta { display: flex; justify-content: space-between; gap: 8px; font: 8px var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+.practice-cycle-row strong { font-size: 12px; line-height: 1.35; }
+.practice-cycle-row small { color: inherit; font-size: 10px; line-height: 1.35; opacity: .72; }
 .eyebrow { color: #888a82; }
 .icon-button { width: 40px; height: 40px; border-radius: 50%; background: var(--acid); color: var(--ink); font-size: 24px; }
 .icon-button:hover { transform: rotate(8deg); }
@@ -392,11 +404,22 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
 
 /* Guided practice */
 .practice-panel { overflow-y: auto; padding: 42px max(28px, calc((100% - 940px)/2)); }
-.practice-empty { min-height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
+.practice-empty { min-height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding-bottom: 46px; }
 .practice-number { color: transparent; -webkit-text-stroke: 1px #9a9b92; font: 72px/1 var(--mono); }
 .practice-empty h2 { margin: 20px 0 12px; font-size: clamp(38px, 5vw, 64px); line-height: .98; letter-spacing: -.055em; }
 .practice-progress-intro { width: min(650px, 100%); margin: 10px 0 20px; }
 .practice-empty p { max-width: 650px; margin: 0 0 28px; color: #66675f; font-size: 17px; line-height: 1.55; }
+.practice-example { width: min(940px, 100%); margin: 8px 0 28px; border: 1px solid var(--line); border-radius: 24px; overflow: hidden; background: #e9e7dd; }
+.practice-example header { padding: 24px 26px; background: var(--ink); color: var(--paper); }
+.practice-example header .eyebrow { color: var(--acid); }
+.practice-example h3 { max-width: 820px; margin: 10px 0 0; font-size: clamp(20px, 2.6vw, 31px); line-height: 1.25; letter-spacing: -.03em; }
+.practice-example-steps { display: grid; grid-template-columns: 1fr 1fr; }
+.practice-example-steps section { min-width: 0; padding: 20px 22px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.practice-example-steps section:nth-child(even) { border-right: 0; }
+.practice-example-steps span, .practice-example footer > span { display: block; margin-bottom: 10px; color: var(--violet); font: 700 9px var(--mono); text-transform: uppercase; letter-spacing: .09em; }
+.practice-example .practice-example-steps p, .practice-example footer p { max-width: none; margin: 0; color: var(--ink); font-size: 14px; line-height: 1.55; }
+.practice-example footer { padding: 20px 22px; background: var(--acid); }
+.practice-example footer > span { color: #505b22; }
 .practice-workspace { padding-bottom: 50px; }
 .practice-progress { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; margin-bottom: 36px; }
 .practice-progress span { padding-top: 9px; border-top: 3px solid #c8c7bd; color: #92938b; font: 9px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
@@ -404,6 +427,17 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
 .practice-situation { padding: 30px; border-radius: 24px; background: var(--ink); color: var(--paper); }
 .practice-situation h2 { max-width: 820px; margin: 14px 0 0; font-size: clamp(24px, 3vw, 38px); line-height: 1.25; letter-spacing: -.035em; }
 .practice-situation p { margin: 16px 0 0; color: #b8bab1; font-size: 13px; line-height: 1.5; }
+.practice-timeline { display: grid; gap: 14px; margin-top: 20px; }
+.practice-attempt-card { overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: rgba(255,255,255,.28); }
+.practice-attempt-head { display: flex; justify-content: space-between; gap: 12px; padding: 13px 17px; border-bottom: 1px solid var(--line); font: 9px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+.practice-attempt-steps { display: grid; grid-template-columns: 1fr 1fr; }
+.practice-attempt-step { padding: 16px 17px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.practice-attempt-step:nth-child(even) { border-right: 0; }
+.practice-attempt-step span { display: block; margin-bottom: 7px; color: var(--muted); font: 8px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+.practice-attempt-step p { margin: 0; font-size: 13px; line-height: 1.5; }
+.practice-attempt-model { padding: 17px; background: #e4e1d5; }
+.practice-attempt-model strong { display: block; margin-bottom: 7px; color: #6558b7; font: 9px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+.practice-attempt-model p { margin: 0; font-size: 13px; line-height: 1.55; }
 .practice-form { display: grid; gap: 18px; margin-top: 24px; }
 .practice-form label > span { display: block; margin: 0 0 8px; font: 10px var(--mono); text-transform: uppercase; letter-spacing: .1em; }
 .practice-form textarea { width: 100%; padding: 17px 18px; resize: vertical; border: 1px solid var(--line); border-radius: 16px; outline: 0; background: #f8f7f1; color: var(--ink); font-size: 16px; line-height: 1.5; }
@@ -412,6 +446,9 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
 .form-error { min-height: 18px; margin: 0; color: #9b392f; font-size: 12px; }
 .practice-submit-row { display: flex; justify-content: space-between; align-items: center; }
 .practice-submit-row small { color: var(--muted); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .1em; }
+.practice-form-state { display: grid; gap: 5px; }
+.practice-form-state #practice-save-status { color: #5d6930; font-size: 8px; }
+.practice-form-state #practice-save-status.is-error { color: #9b392f; }
 .practice-feedback { position: relative; margin-top: 26px; padding: 30px; border: 1px solid #e5b9a5; border-radius: 24px; background: #ffe1d3; overflow: hidden; }
 .practice-feedback.passed { border-color: #acd32b; background: var(--acid); }
 .feedback-verdict { display: inline-flex; padding: 7px 10px; border-radius: 999px; background: var(--ink); color: #ffb18e; font: 9px var(--mono); text-transform: uppercase; letter-spacing: .1em; }
@@ -544,6 +581,10 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
   .back-actions { flex-direction: column; align-items: flex-start; }
   .coach-shell { display: block; }
   .chat-sidebar { display: none; }
+  #view-learning.is-practice .chat-sidebar { min-height: 0; display: flex; padding: 18px 16px; border-right: 0; border-bottom: 1px solid var(--white-line); }
+  #view-learning.is-practice .agent-card { display: none; }
+  #view-learning.is-practice .practice-cycle-list { max-height: 260px; }
+  #view-learning.is-practice .chat-main { height: auto; min-height: calc(100vh - 78px); }
   .chat-main { height: calc(100vh - 66px); }
   .chat-header { min-height: 74px; padding: 13px 17px; }
   .chat-header h1 { font-size: 20px; }
@@ -561,6 +602,8 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
   .practice-panel { height: calc(100vh - 140px); padding: 24px 17px 110px; }
   .practice-progress span { font-size: 7px; overflow: hidden; }
   .practice-situation { padding: 22px; border-radius: 18px; }
+  .practice-example-steps, .practice-attempt-steps { grid-template-columns: 1fr; }
+  .practice-example-steps section, .practice-attempt-step { border-right: 0; }
   .assessment-grid { grid-template-columns: 1fr; }
   .feedback-next { grid-template-columns: 1fr; gap: 7px; }
   .welcome-panel { justify-content: flex-start; padding-top: 20px; }
