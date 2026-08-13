@@ -177,6 +177,15 @@ test('practice hydrates server cycles and debounces owner draft persistence', as
   assert.match(app, /classList\.toggle\('is-practice'/);
 });
 
+test('practice locks submitted values and guards duplicate mutations', async () => {
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(app, /let practiceSubmitting = false/);
+  assert.match(app, /if \(practiceSubmitting\) return/);
+  assert.match(app, /setRevisionFields\(\[\], true\)/);
+  assert.match(app, /buttons\.some\(button => button\.disabled\)/);
+});
+
 test('trainer loads ignore stale responses and clear controls on failure', async () => {
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
 

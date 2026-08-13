@@ -108,6 +108,9 @@ H2 создаёт файл `backend/data/question-hacker.mv.db`. Консоль 
 - `GET /api/trainer/next` и `POST /api/trainer/attempts`
 - `GET /api/progress`
 - `POST /api/practice/assignments`
+- `GET /api/practice/cycles` и `GET /api/practice/cycles/{assignmentId}` — персональная история и полный timeline цикла
+- `PUT /api/practice/cycles/{assignmentId}/draft` — серверное автосохранение черновика
+- `GET /api/practice/examples/random` — случайный опубликованный пример полного цикла
 - `POST /api/practice/attempts`, `GET /api/practice/attempts/{id}` и `POST /api/practice/attempts/{id}/revisions`
 - `GET /api/practice/attempts/{id}/events` — SSE статуса оценки
 - `/api/admin/scenario-candidates/**` — генерация, просмотр, правка, отказ и публикация (только ADMIN)

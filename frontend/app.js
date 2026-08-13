@@ -44,6 +44,7 @@
   let practiceDraftPromise = null;
   let practiceDraftDirty = false;
   let practiceEditorBaseAttemptId = null;
+  let practiceSubmitting = false;
   let moderationStatus = 'PENDING_REVIEW';
   let moderationRows = [];
   let selectedCandidate = null;
@@ -650,6 +651,7 @@
   }
 
   async function showPracticeHome(refreshExample = true) {
+    if (practiceSubmitting) return;
     await flushPracticeDraft();
     clearAttemptPoll();
     practiceLoadSequence += 1;
@@ -663,11 +665,12 @@
   }
 
   async function startPractice() {
-    await flushPracticeDraft();
-    clearAttemptPoll();
     const buttons = [$('#start-practice'), $('#new-practice')];
+    if (practiceSubmitting || buttons.some(button => button.disabled)) return;
     buttons.forEach(button => setBusy(button, true));
     try {
+      await flushPracticeDraft();
+      clearAttemptPoll();
       const assignment = await api('/practice/assignments', { method: 'POST', body: '{}' });
       await loadPracticeCycles();
       await selectPracticeCycle(assignment.assignmentId, { skipFlush: true });
@@ -682,6 +685,7 @@
   }
 
   async function selectPracticeCycle(assignmentId, options = {}) {
+    if (practiceSubmitting && !options.afterSubmission) return;
     if (!options.skipFlush) await flushPracticeDraft();
     clearAttemptPoll();
     const sequence = ++practiceLoadSequence;
@@ -697,6 +701,7 @@
   }
 
   function renderPracticeCycle(cycle, focusFeedback = false) {
+    practiceSubmitting = false;
     practiceAssignment = cycle.assignment;
     practiceAttempt = cycle.attempts.at(-1) || null;
     practiceEditorBaseAttemptId = cycle.editor.baseAttemptId;
@@ -816,23 +821,27 @@
 
   async function submitPractice(event) {
     event.preventDefault();
-    if (!practiceAssignment) return;
+    if (!practiceAssignment || practiceSubmitting) return;
+    const assignment = practiceAssignment;
+    const attempt = practiceAttempt;
     const values = practiceValues();
-    const fieldsToRevise = practiceAttempt?.assessment?.fieldsToRevise || [];
-    const error = validatePractice(values, practiceAttempt?.status === 'NEEDS_REVISION' ? fieldsToRevise : null);
+    const fieldsToRevise = attempt?.assessment?.fieldsToRevise || [];
+    const error = validatePractice(values, attempt?.status === 'NEEDS_REVISION' ? fieldsToRevise : null);
     if (error) {
       $('#practice-error').textContent = error;
       return;
     }
+    practiceSubmitting = true;
+    setBusy($('#submit-practice'), true, 'Оцениваем…');
+    setRevisionFields([], true);
+    updatePracticeProgress(true);
     await flushPracticeDraft();
     $('#practice-error').textContent = '';
-    const revision = practiceAttempt?.status === 'NEEDS_REVISION';
-    const path = revision ? `/practice/attempts/${practiceAttempt.attemptId}/revisions` : '/practice/attempts';
+    const revision = attempt?.status === 'NEEDS_REVISION';
+    const path = revision ? `/practice/attempts/${attempt.attemptId}/revisions` : '/practice/attempts';
     const body = revision
       ? Object.fromEntries([...fieldsToRevise.map(field => [field, values[field]]), ['model', selectedModel], ['idempotencyKey', idempotencyKey('revision')]])
-      : { assignmentId: practiceAssignment.assignmentId, ...values, model: selectedModel, idempotencyKey: idempotencyKey('attempt') };
-    setBusy($('#submit-practice'), true, 'Оцениваем…');
-    updatePracticeProgress(true);
+      : { assignmentId: assignment.assignmentId, ...values, model: selectedModel, idempotencyKey: idempotencyKey('attempt') };
     try {
       practiceAttempt = await api(path, { method: 'POST', body: JSON.stringify(body) });
       practiceDraftDirty = false;
@@ -840,8 +849,10 @@
       await loadPracticeCycles();
       await followAttempt(practiceAttempt.attemptId);
     } catch (requestError) {
+      practiceSubmitting = false;
       $('#practice-error').textContent = requestError.message;
       setBusy($('#submit-practice'), false, 'Отправить на оценку →');
+      setRevisionFields(revision ? fieldsToRevise : []);
     }
   }
 
@@ -852,15 +863,18 @@
         practiceAttempt = await api(`/practice/attempts/${attemptId}`);
         if (TERMINAL_ATTEMPT_STATUSES.has(practiceAttempt.status)) {
           clearAttemptPoll();
+          practiceSubmitting = false;
           await loadPracticeCycles();
-          await selectPracticeCycle(practiceAttempt.assignmentId, { skipFlush: true, focusFeedback: true });
+          await selectPracticeCycle(practiceAttempt.assignmentId, { skipFlush: true, focusFeedback: true, afterSubmission: true });
           return;
         }
         attemptPoll = window.setTimeout(poll, 900);
       } catch (error) {
         clearAttemptPoll();
+        practiceSubmitting = false;
         $('#practice-error').textContent = error.message;
-        setBusy($('#submit-practice'), false, 'Повторить →');
+        setRevisionFields([], true);
+        setBusy($('#submit-practice'), true, 'Проверка продолжается…');
       }
     };
     await poll();
@@ -872,6 +886,7 @@
   }
 
   function renderPracticeFeedback(attempt, focus = true) {
+    practiceSubmitting = false;
     const assessment = attempt.assessment;
     const passed = attempt.status === 'PASSED';
     const unverified = attempt.status === 'UNVERIFIED';
