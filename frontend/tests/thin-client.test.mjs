@@ -190,6 +190,7 @@ test('practice locks submitted values and guards duplicate mutations', async () 
 test('practice gates new assignments until PASSED and explains catalog exhaustion', async () => {
   const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+  const startPractice = app.match(/async function startPractice\(\)[\s\S]*?async function selectPracticeCycle/)?.[0] || '';
 
   assert.match(html, /id="practice-availability"[^>]*role="status"[^>]*aria-live="polite"/);
   assert.match(app, /PRACTICE_ASSIGNMENT_INCOMPLETE/);
@@ -198,6 +199,7 @@ test('practice gates new assignments until PASSED and explains catalog exhaustio
   assert.match(app, /function syncPracticeAvailability/);
   assert.match(app, /error\.problem\?\.code/);
   assert.match(app, /Вы прошли все доступные ситуации\. Дождитесь, пока администратор добавит новые\./);
+  assert.match(startPractice, /code === PRACTICE_CATALOG_EXHAUSTED\) \{[^}]*showToast/);
 });
 
 test('trainer loads ignore stale responses and clear controls on failure', async () => {

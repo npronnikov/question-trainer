@@ -694,7 +694,9 @@
         setPracticeAvailability(code, error.message);
         await loadPracticeCycles();
       } else if (code === PRACTICE_CATALOG_EXHAUSTED) {
-        setPracticeAvailability(code, error.message || PRACTICE_EXHAUSTED_MESSAGE);
+        const message = error.message || PRACTICE_EXHAUSTED_MESSAGE;
+        setPracticeAvailability(code, message);
+        showToast(message);
       } else {
         showToast(error.message);
       }
