@@ -67,6 +67,24 @@ test('theory omits the server-program footer and evidence uses two content colum
   assert.match(css, /\.evidence-card\s*\{[^}]*grid-template-columns:\s*minmax\(180px,\s*\.7fr\)\s+1\.5fr;/);
 });
 
+test('theory shows a complete worked example before expandable historical cases', async () => {
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+  const css = await fs.readFile(new URL('styles.css', frontend), 'utf8');
+
+  assert.match(app, /class="worked-example"/);
+  assert.match(app, /ordinaryQuestion/);
+  assert.match(app, /hackerQuestion/);
+  assert.match(app, /reasoningSteps\.map/);
+  assert.match(app, /questionTemplates\.slice\(0, 2\)/);
+  assert.match(app, /class="exercise-pair applied-exercises"/);
+  assert.match(app, /<details class="case-card"/);
+  assert.match(app, /item\.sources\.map/);
+  assert.match(app, /Подтверждено исследованием/);
+  assert.match(app, /Ретроспективная интерпретация/);
+  assert.match(css, /\.worked-questions\s*\{[^}]*grid-template-columns:\s*1fr 1fr/);
+  assert.match(css, /@media \(max-width:\s*720px\)[\s\S]*\.worked-questions[^{]*\{[^}]*grid-template-columns:\s*1fr/);
+});
+
 test('lower ACP card opens an accessible diagnostic dialog', async () => {
   const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
@@ -162,10 +180,10 @@ test('practice and coach are independent hash routes', async () => {
   assert.doesNotMatch(css, /\.coach-mode-switch/);
 });
 
-test('route split invalidates the offline shell cache', async () => {
+test('theory worked examples invalidate the offline shell cache', async () => {
   const serviceWorker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
 
-  assert.match(serviceWorker, /const CACHE = 'question-hacker-v10';/);
+  assert.match(serviceWorker, /const CACHE = 'question-hacker-v11';/);
 });
 
 test('boot activates the hash route before background API hydration', async () => {

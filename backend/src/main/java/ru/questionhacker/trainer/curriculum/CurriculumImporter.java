@@ -35,6 +35,8 @@ public class CurriculumImporter implements ApplicationRunner {
     private static final Set<String> DIFFICULTIES = Set.of("L1", "L2", "L3");
     private static final Set<String> EVIDENCE_GRADES = Set.of(
             "RESEARCH_SUPPORTED", "PRACTITIONER_METHOD", "HEURISTIC");
+    private static final Set<String> CASE_CLASSIFICATIONS = Set.of(
+            "explicit", "research-interpretation");
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
@@ -68,6 +70,20 @@ public class CurriculumImporter implements ApplicationRunner {
             throw new IllegalStateException("Unsupported curriculum schema version");
         }
 
+        Set<String> sourceKeys = new HashSet<>();
+        JsonNode sources = curriculum.path("sources");
+        if (!sources.isArray() || sources.isEmpty()) {
+            throw new IllegalStateException("Curriculum requires evidence sources");
+        }
+        for (JsonNode source : sources) {
+            String key = required(source, "key");
+            if (!sourceKeys.add(key)) throw new IllegalStateException("Duplicate source key: " + key);
+            required(source, "title");
+            if (!EVIDENCE_GRADES.contains(required(source, "grade"))) {
+                throw new IllegalStateException("Unknown evidence grade");
+            }
+        }
+
         JsonNode categories = curriculum.path("categories");
         if (!categories.isArray() || categories.size() != 7) {
             throw new IllegalStateException("Curriculum must contain exactly seven categories");
@@ -81,17 +97,10 @@ public class CurriculumImporter implements ApplicationRunner {
             if (!category.path("strengthAnchors").isArray() || category.path("strengthAnchors").size() < 2) {
                 throw new IllegalStateException(code + " requires strength anchors");
             }
+            validateAppliedTheory(category, code, sourceKeys);
         }
         if (!codes.equals(CATEGORY_CODES)) {
             throw new IllegalStateException("Unexpected category set: " + codes);
-        }
-
-        for (JsonNode source : curriculum.path("sources")) {
-            required(source, "key");
-            required(source, "title");
-            if (!EVIDENCE_GRADES.contains(required(source, "grade"))) {
-                throw new IllegalStateException("Unknown evidence grade");
-            }
         }
 
         JsonNode scenarios = scenarioDocument.path("scenarios");
@@ -132,14 +141,76 @@ public class CurriculumImporter implements ApplicationRunner {
         }
     }
 
+    private void validateAppliedTheory(JsonNode category, String code, Set<String> sourceKeys) {
+        JsonNode example = category.path("workedExample");
+        required(example, "title");
+        required(example, "situation");
+        required(example, "ordinaryQuestion");
+        required(example, "hackerQuestion");
+        required(example, "solution");
+        required(example, "whyItFits");
+        JsonNode reasoningSteps = array(example, "reasoningSteps", 3, 5, code);
+        for (JsonNode step : reasoningSteps) {
+            required(step, "label");
+            required(step, "text");
+        }
+
+        JsonNode confusion = example.path("confusion");
+        String otherCategory = required(confusion, "otherCategory");
+        required(confusion, "explanation");
+        if (!CATEGORY_CODES.contains(otherCategory) || code.equals(otherCategory)) {
+            throw new IllegalStateException(code + " has invalid worked-example confusion: " + otherCategory);
+        }
+
+        for (JsonNode template : array(category, "questionTemplates", 2, Integer.MAX_VALUE, code)) {
+            required(template, "domain");
+            required(template, "question");
+        }
+        required(category, "quickExercise");
+        required(category, "experiment");
+
+        JsonNode cases = array(category, "cases", 3, 3, code);
+        for (JsonNode item : cases) {
+            String slug = required(item, "slug");
+            for (String field : List.of(
+                    "title", "actor", "period", "originalFrame", "frameShift", "action",
+                    "outcome", "whyItFits", "limitations")) {
+                required(item, field);
+            }
+            String classification = required(item, "classification");
+            if (!CASE_CLASSIFICATIONS.contains(classification)) {
+                throw new IllegalStateException(code + " case " + slug + " has invalid classification");
+            }
+            JsonNode caseSources = array(item, "sourceIds", 1, Integer.MAX_VALUE, code + "/" + slug);
+            for (JsonNode sourceId : caseSources) {
+                if (!sourceId.isTextual() || !sourceKeys.contains(sourceId.asText())) {
+                    throw new IllegalStateException(code + " case " + slug
+                            + " references unknown source: " + sourceId.asText());
+                }
+            }
+        }
+    }
+
+    private static JsonNode array(
+            JsonNode parent, String field, int minimum, int maximum, String context) {
+        JsonNode value = parent.path(field);
+        if (!value.isArray() || value.size() < minimum || value.size() > maximum) {
+            throw new IllegalStateException(context + " requires " + field
+                    + " size between " + minimum + " and " + maximum);
+        }
+        return value;
+    }
+
     private void importCategories(JsonNode categories) throws IOException {
         for (JsonNode category : categories) {
             jdbc.update("""
                     MERGE INTO category(
                       code, sort_order, display_number, name, nickname, operation_text,
                       signal_text, when_text, definition_text, mechanism_text, formula_json,
-                      examples_json, mistake_text, cue_text, strength_anchors_json
-                    ) KEY(code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      examples_json, worked_example_json, question_templates_json,
+                      quick_exercise_text, experiment_text, historical_cases_json,
+                      mistake_text, cue_text, strength_anchors_json
+                    ) KEY(code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     category.path("code").asText(), category.path("sortOrder").asInt(),
                     category.path("number").asText(), category.path("name").asText(),
@@ -148,6 +219,10 @@ public class CurriculumImporter implements ApplicationRunner {
                     category.path("definition").asText(), category.path("mechanism").asText(),
                     json.writeValueAsString(category.path("formula")),
                     json.writeValueAsString(category.path("examples")),
+                    json.writeValueAsString(category.path("workedExample")),
+                    json.writeValueAsString(category.path("questionTemplates")),
+                    category.path("quickExercise").asText(), category.path("experiment").asText(),
+                    json.writeValueAsString(category.path("cases")),
                     category.path("mistake").asText(), category.path("cue").asText(),
                     json.writeValueAsString(category.path("strengthAnchors")));
         }

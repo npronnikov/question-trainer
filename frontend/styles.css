@@ -206,6 +206,38 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visib
 .source-register li { margin: 13px 0; line-height: 1.4; }
 .source-register li span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
 .theory-formula { margin-top: 36px; }
+.worked-example { margin-top: 42px; padding-top: 34px; border-top: 3px solid var(--ink); }
+.worked-head { display: flex; justify-content: space-between; gap: 24px; align-items: baseline; }
+.worked-head > span, .worked-situation > strong, .worked-question > span, .worked-solution > span, .worked-classification > span { font: 10px var(--mono); letter-spacing: .1em; }
+.worked-head > span { color: var(--violet); }
+.worked-head h3 { margin: 0; font-size: 26px; letter-spacing: -.025em; text-align: right; }
+.worked-situation { margin-top: 20px; padding: 20px 22px; border-radius: 18px; background: var(--paper-2); }
+.worked-situation > strong { color: var(--muted); text-transform: uppercase; }
+.worked-situation p, .worked-solution p, .worked-classification p { margin: 10px 0 0; line-height: 1.55; }
+.worked-questions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.worked-question { min-height: 150px; padding: 20px 22px; border: 1px solid var(--line); border-radius: 18px; }
+.worked-question > span { color: var(--muted); }
+.worked-question blockquote { margin: 18px 0 0; font: italic 400 20px/1.4 Georgia, serif; }
+.worked-question.is-hacker { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+.worked-question.is-hacker > span { color: var(--acid); }
+.reasoning-chain { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; padding: 0; margin: 12px 0 0; list-style: none; counter-reset: worked-step; }
+.reasoning-chain li { counter-increment: worked-step; position: relative; min-height: 156px; padding: 18px; border-radius: 16px; background: var(--paper-2); }
+.reasoning-chain li:not(:last-child)::after { content: "→"; position: absolute; z-index: 2; top: 19px; right: -13px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: var(--violet); color: white; font-weight: 800; }
+.reasoning-chain span { display: block; padding-right: 18px; color: var(--violet); font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.reasoning-chain span::before { content: counter(worked-step, decimal-leading-zero) " / "; color: var(--muted); }
+.reasoning-chain p { margin: 14px 0 0; font-size: 13px; line-height: 1.5; }
+.worked-outcomes { display: grid; grid-template-columns: 1.25fr 1fr; gap: 12px; margin-top: 12px; }
+.worked-solution, .worked-classification { padding: 22px; border-radius: 18px; }
+.worked-solution { background: var(--acid); }
+.worked-classification { background: #ffe1d3; }
+.worked-classification p + p { padding-top: 12px; border-top: 1px solid rgba(16,17,15,.12); }
+.question-template-list { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 20px; }
+.question-template-list article { padding-top: 16px; border-top: 1px solid var(--line); }
+.question-template-list span { color: var(--muted); font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.question-template-list p { margin: 9px 0 0; font-weight: 650; line-height: 1.45; }
+.applied-exercises { margin-top: 34px; }
+.historical-cases { margin-top: 42px; padding-top: 34px; border-top: 3px solid var(--ink); }
+.historical-cases .case-list { margin-top: 18px; }
 .theory-evidence { margin-top: 42px; padding-top: 34px; border-top: 3px solid var(--ink); }
 .evidence-card { display: grid; grid-template-columns: minmax(180px, .7fr) 1.5fr; gap: 22px; align-items: start; padding: 20px 0; border-bottom: 1px solid var(--line); }
 .evidence-card h4 { margin: 6px 0 0; font-size: 18px; }
@@ -490,6 +522,12 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
   .detail-columns { grid-template-columns: 1fr; }
   .expansion-entry { align-items: flex-start; flex-direction: column; }
   .expansion-grid, .exercise-pair { grid-template-columns: 1fr; }
+  .worked-head { display: block; }
+  .worked-head h3 { margin-top: 8px; text-align: left; }
+  .worked-questions, .worked-outcomes, .question-template-list { grid-template-columns: 1fr; }
+  .reasoning-chain { grid-template-columns: 1fr; }
+  .reasoning-chain li { min-height: 0; }
+  .reasoning-chain li:not(:last-child)::after { content: "↓"; top: auto; right: 17px; bottom: -17px; }
   .case-card summary { grid-template-columns: 28px 1fr; }
   .case-card summary > small { grid-column: 2; text-align: left; }
   .case-content dl div { grid-template-columns: 1fr; gap: 6px; }

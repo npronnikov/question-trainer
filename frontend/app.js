@@ -14,6 +14,11 @@
     DUPLICATE: 'Дубликат', UNSAFE_CONTENT: 'Небезопасный контент',
     POOR_WRITING: 'Слабая формулировка', OTHER: 'Другая причина'
   };
+  const EVIDENCE_LABELS = {
+    RESEARCH_SUPPORTED: 'Подтверждено исследованием',
+    PRACTITIONER_METHOD: 'Практический метод',
+    HEURISTIC: 'Эвристическая рекомендация'
+  };
 
   let booted = false;
   let currentUser = null;
@@ -132,13 +137,80 @@
       <p class="detail-definition">${escapeHtml(category.definition)}</p>
       <div class="detail-columns"><div class="detail-box"><h4>Операция</h4><p>${escapeHtml(category.operation)}</p></div><div class="detail-box"><h4>Как работает</h4><p>${escapeHtml(category.mechanism)}</p></div></div>
       <div class="detail-box theory-formula"><h4>Формула</h4><ol class="formula-list">${category.formula.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ol></div>
-      <div class="example-table">${category.examples.map(item => `<div class="example-row"><span>${escapeHtml(item[0])}</span><strong>«${escapeHtml(item[1])}»</strong></div>`).join('')}</div>
+      ${renderWorkedExample(category)}
+      ${renderExercises(category)}
       <div class="warning-box"><b>!</b><p><strong>Анти-паттерн.</strong> ${escapeHtml(category.mistake)}</p></div>
       <div class="cue-line"><strong>Контрольный сигнал:</strong> ${escapeHtml(category.cue)}</div>
+      ${renderHistoricalCases(category)}
       <section class="theory-evidence"><div class="expansion-head"><span>ДОКАЗАТЕЛЬНЫЙ СЛОЙ</span><strong>${evidence.length} материалов</strong></div>
-        ${evidence.map(section => `<article class="evidence-card"><div class="evidence-meta"><span>${escapeHtml(section.evidenceGrade || '—')}</span><h4>${escapeHtml(section.title)}</h4>${section.source ? `<a href="${escapeHtml(section.source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(section.source.title)} ↗</a>` : ''}</div><p>${escapeHtml(section.content)}</p></article>`).join('')}
+        ${evidence.map(section => `<article class="evidence-card"><div class="evidence-meta"><span>${escapeHtml(EVIDENCE_LABELS[section.evidenceGrade] || 'Без оценки')}</span><h4>${escapeHtml(section.title)}</h4>${section.source ? `<a href="${escapeHtml(section.source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(section.source.title)} ↗</a>` : ''}</div><p>${escapeHtml(section.content)}</p></article>`).join('')}
       </section>
       ${category.contrasts?.length ? `<section class="contrast-list"><h3>Не перепутать</h3>${category.contrasts.map(item => `<p><strong>${escapeHtml(item.otherName)}:</strong> ${escapeHtml(item.text)}</p>`).join('')}</section>` : ''}`;
+  }
+
+  function renderWorkedExample(category) {
+    const example = category.workedExample;
+    if (!example) return '';
+    const confusionName = categories.find(item => item.code === example.confusion?.otherCategory)?.name
+      || example.confusion?.otherCategory || 'соседняя техника';
+    const questionTemplates = category.questionTemplates || [];
+    return `
+      <section class="worked-example">
+        <div class="worked-head"><span>РАЗОБРАННЫЙ ПРИМЕР</span><h3>${escapeHtml(example.title)}</h3></div>
+        <div class="worked-situation"><strong>Ситуация</strong><p>${escapeHtml(example.situation)}</p></div>
+        <div class="worked-questions">
+          <article class="worked-question"><span>ОБЫЧНЫЙ ВОПРОС</span><blockquote>«${escapeHtml(example.ordinaryQuestion)}»</blockquote></article>
+          <article class="worked-question is-hacker"><span>ВОПРОС-ВЗЛОМЩИК</span><blockquote>«${escapeHtml(example.hackerQuestion)}»</blockquote></article>
+        </div>
+        <ol class="reasoning-chain">
+          ${example.reasoningSteps.map(step => `<li><span>${escapeHtml(step.label)}</span><p>${escapeHtml(step.text)}</p></li>`).join('')}
+        </ol>
+        <div class="worked-outcomes">
+          <article class="worked-solution"><span>РЕШЕНИЕ / ЭКСПЕРИМЕНТ</span><p>${escapeHtml(example.solution)}</p></article>
+          <article class="worked-classification"><span>ПОЧЕМУ ЭТО ${escapeHtml(category.name.toUpperCase())}</span><p>${escapeHtml(example.whyItFits)}</p><p><strong>Не перепутать с «${escapeHtml(confusionName)}».</strong> ${escapeHtml(example.confusion?.explanation)}</p></article>
+        </div>
+        <div class="question-template-list">
+          ${questionTemplates.slice(0, 2).map(item => `<article><span>${escapeHtml(item.domain)}</span><p>«${escapeHtml(item.question)}»</p></article>`).join('')}
+        </div>
+      </section>`;
+  }
+
+  function renderExercises(category) {
+    if (!category.quickExercise || !category.experiment) return '';
+    return `
+      <div class="exercise-pair applied-exercises">
+        <section><span>15 МИНУТ</span><h4>Попробуйте технику</h4><p>${escapeHtml(category.quickExercise)}</p></section>
+        <section><span>24–48 ЧАСОВ</span><h4>Полевой эксперимент</h4><p>${escapeHtml(category.experiment)}</p></section>
+      </div>`;
+  }
+
+  function renderHistoricalCases(category) {
+    if (!category.cases?.length) return '';
+    const classificationLabel = value => value === 'explicit'
+      ? 'Метод явно описан участником'
+      : 'Ретроспективная интерпретация исследования';
+    return `
+      <section class="historical-cases">
+        <div class="expansion-head"><span>ЛЮДИ И КОМПАНИИ</span><strong>${category.cases.length} доказательных кейса</strong></div>
+        <div class="case-list">
+          ${category.cases.map((item, index) => `
+            <details class="case-card">
+              <summary><span>${String(index + 1).padStart(2, '0')}</span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.actor)} · ${escapeHtml(item.period)}</small></summary>
+              <div class="case-content">
+                <dl>
+                  <div><dt>Исходная рамка</dt><dd>${escapeHtml(item.originalFrame)}</dd></div>
+                  <div><dt>Сдвиг рамки</dt><dd>${escapeHtml(item.frameShift)}</dd></div>
+                  <div><dt>Действие</dt><dd>${escapeHtml(item.action)}</dd></div>
+                  <div><dt>Результат</dt><dd>${escapeHtml(item.outcome)}</dd></div>
+                  <div><dt>Почему это техника</dt><dd>${escapeHtml(item.whyItFits)}</dd></div>
+                  <div><dt>Ограничения</dt><dd>${escapeHtml(item.limitations)}</dd></div>
+                </dl>
+                <p class="case-classification">${escapeHtml(classificationLabel(item.classification))}</p>
+                <p class="case-sources">${item.sources.map(source => `<a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.title)}</a>`).join(' · ')}</p>
+              </div>
+            </details>`).join('')}
+        </div>
+      </section>`;
   }
 
   function setTrainerFace(flipped) {

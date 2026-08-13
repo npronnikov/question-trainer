@@ -31,7 +31,9 @@ public class CurriculumRepository {
         return jdbc.query("""
                 SELECT code, display_number, name, nickname, operation_text, signal_text,
                        when_text, definition_text, mechanism_text, formula_json, examples_json,
-                       mistake_text, cue_text, strength_anchors_json
+                       worked_example_json, question_templates_json, quick_exercise_text,
+                       experiment_text, historical_cases_json, mistake_text, cue_text,
+                       strength_anchors_json
                 FROM category
                 ORDER BY sort_order
                 """, (rs, row) -> categoryRow(rs));
@@ -41,7 +43,9 @@ public class CurriculumRepository {
         return jdbc.query("""
                 SELECT code, display_number, name, nickname, operation_text, signal_text,
                        when_text, definition_text, mechanism_text, formula_json, examples_json,
-                       mistake_text, cue_text, strength_anchors_json
+                       worked_example_json, question_templates_json, quick_exercise_text,
+                       experiment_text, historical_cases_json, mistake_text, cue_text,
+                       strength_anchors_json
                 FROM category
                 WHERE code=?
                 """, (rs, row) -> categoryRow(rs), code).stream().findFirst();
@@ -76,6 +80,17 @@ public class CurriculumRepository {
                 rs.getString("contrast_text")), categoryCode);
     }
 
+    public List<EvidenceSourceRow> listEvidenceSources() {
+        return jdbc.query("""
+                SELECT source_key, title, source_url, supports_text, evidence_grade
+                FROM evidence_source
+                ORDER BY source_key
+                """, (rs, row) -> new EvidenceSourceRow(
+                rs.getString("source_key"), rs.getString("title"),
+                rs.getString("source_url"), rs.getString("supports_text"),
+                rs.getString("evidence_grade")));
+    }
+
     private static CategoryRow categoryRow(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new CategoryRow(
                 rs.getString("code"), rs.getString("display_number"), rs.getString("name"),
@@ -83,6 +98,9 @@ public class CurriculumRepository {
                 rs.getString("signal_text"), rs.getString("when_text"),
                 rs.getString("definition_text"), rs.getString("mechanism_text"),
                 rs.getString("formula_json"), rs.getString("examples_json"),
+                rs.getString("worked_example_json"), rs.getString("question_templates_json"),
+                rs.getString("quick_exercise_text"), rs.getString("experiment_text"),
+                rs.getString("historical_cases_json"),
                 rs.getString("mistake_text"), rs.getString("cue_text"),
                 rs.getString("strength_anchors_json"));
     }
@@ -99,6 +117,11 @@ public class CurriculumRepository {
             String mechanism,
             String formulaJson,
             String examplesJson,
+            String workedExampleJson,
+            String questionTemplatesJson,
+            String quickExercise,
+            String experiment,
+            String historicalCasesJson,
             String mistake,
             String cue,
             String strengthAnchorsJson) {
@@ -117,5 +140,9 @@ public class CurriculumRepository {
     }
 
     public record ContrastRow(String otherCategory, String otherName, String text) {
+    }
+
+    public record EvidenceSourceRow(
+            String key, String title, String url, String supports, String evidenceGrade) {
     }
 }

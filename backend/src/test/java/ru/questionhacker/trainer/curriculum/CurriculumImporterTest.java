@@ -61,6 +61,18 @@ class CurriculumImporterTest {
     }
 
     @Test
+    void importsAppliedTheoryForEveryCategory() {
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM category
+                WHERE worked_example_json IS NOT NULL
+                  AND question_templates_json IS NOT NULL
+                  AND quick_exercise_text IS NOT NULL
+                  AND experiment_text IS NOT NULL
+                  AND historical_cases_json IS NOT NULL
+                """, Integer.class)).isEqualTo(7);
+    }
+
+    @Test
     void repeatedImportIsIdempotent() throws Exception {
         importer.run(new DefaultApplicationArguments(new String[0]));
 

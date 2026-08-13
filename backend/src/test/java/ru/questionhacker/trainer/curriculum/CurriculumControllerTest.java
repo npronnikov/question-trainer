@@ -38,9 +38,29 @@ class CurriculumControllerTest {
                 .andExpect(jsonPath("$.code").value("INVERSION"))
                 .andExpect(jsonPath("$.formula.length()").value(4))
                 .andExpect(jsonPath("$.strengthAnchors.length()").value(3))
+                .andExpect(jsonPath("$.workedExample.title").isNotEmpty())
+                .andExpect(jsonPath("$.workedExample.reasoningSteps.length()").value(4))
+                .andExpect(jsonPath("$.workedExample.solution").isNotEmpty())
+                .andExpect(jsonPath("$.workedExample.confusion.otherCategory").value("BACKCASTING"))
+                .andExpect(jsonPath("$.questionTemplates.length()").value(5))
+                .andExpect(jsonPath("$.quickExercise").isNotEmpty())
+                .andExpect(jsonPath("$.experiment").isNotEmpty())
+                .andExpect(jsonPath("$.cases.length()").value(3))
+                .andExpect(jsonPath("$.cases[0].sources[0].url").isNotEmpty())
                 .andExpect(jsonPath("$.sections[0].evidenceGrade").value("HEURISTIC"))
                 .andExpect(jsonPath("$.sections[1].source.title").isNotEmpty())
                 .andExpect(jsonPath("$.contrasts.length()").value(6));
+    }
+
+    @Test
+    void backcastingWorkedExampleMovesFromObservableFutureToToday() throws Exception {
+        mvc.perform(get("/api/curriculum/categories/BACKCASTING").with(user("student")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workedExample.reasoningSteps[0].label").value("2030"))
+                .andExpect(jsonPath("$.workedExample.reasoningSteps[1].label").value("2028"))
+                .andExpect(jsonPath("$.workedExample.reasoningSteps[2].label").value("2027"))
+                .andExpect(jsonPath("$.workedExample.reasoningSteps[3].label").value("Сегодня"))
+                .andExpect(jsonPath("$.workedExample.hackerQuestion").value(org.hamcrest.Matchers.containsString("2030")));
     }
 
     @Test
