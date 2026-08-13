@@ -93,4 +93,22 @@ class MigrationTest {
                 "SELECT COUNT(DISTINCT category_code) FROM practice_example", Integer.class))
                 .isEqualTo(7);
     }
+
+    @Test
+    void flywayTargetsExistingScenariosAtTrainerAndAddsPracticeHintSnapshots() {
+        Integer columns = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE (UPPER(TABLE_NAME)='SCENARIO' AND UPPER(COLUMN_NAME) IN ('CONTENT_TARGET', 'HINT_TEXT'))
+                   OR (UPPER(TABLE_NAME)='SCENARIO_CANDIDATE' AND UPPER(COLUMN_NAME)='CONTENT_TARGET')
+                   OR (UPPER(TABLE_NAME)='PRACTICE_ASSIGNMENT' AND UPPER(COLUMN_NAME)='HINT_TEXT')
+                """, Integer.class);
+
+        assertThat(columns).isEqualTo(4);
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM scenario WHERE content_target <> 'TRAINER'", Integer.class))
+                .isZero();
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM scenario_candidate WHERE content_target <> 'TRAINER'", Integer.class))
+                .isZero();
+    }
 }
