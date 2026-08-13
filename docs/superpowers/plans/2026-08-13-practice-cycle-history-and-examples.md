@@ -12,7 +12,9 @@
 
 ## File structure
 
-- Create `backend/src/main/resources/db/migration/V7__practice_history_and_examples.sql`: draft/example schema and seven category examples.
+- Create `backend/src/main/resources/db/migration/V8__practice_history_and_examples.sql`: draft/example schema and seven category examples.
+- Create `backend/src/main/resources/curriculum/practice-examples.json`: one full-cycle example per methodology.
+- Modify `backend/src/main/java/ru/questionhacker/trainer/curriculum/CurriculumImporter.java`: validate and idempotently import examples after categories.
 - Create `backend/src/main/java/ru/questionhacker/trainer/practice/PracticeCycleService.java`: owner-only list/detail/draft/example screen models.
 - Modify `backend/src/main/java/ru/questionhacker/trainer/practice/PracticeRepository.java`: cycle, draft, attempt-list and random-example queries.
 - Modify `backend/src/main/java/ru/questionhacker/trainer/practice/PracticeController.java`: history/detail/draft/example endpoints.
@@ -30,7 +32,9 @@
 ### Task 1: Add draft and example persistence
 
 **Files:**
-- Create: `backend/src/main/resources/db/migration/V7__practice_history_and_examples.sql`
+- Create: `backend/src/main/resources/db/migration/V8__practice_history_and_examples.sql`
+- Create: `backend/src/main/resources/curriculum/practice-examples.json`
+- Modify: `backend/src/main/java/ru/questionhacker/trainer/curriculum/CurriculumImporter.java`
 - Modify: `backend/src/test/java/ru/questionhacker/trainer/MigrationTest.java`
 
 - [ ] **Step 1: Write the failing migration assertions**
@@ -55,13 +59,13 @@ void flywayCreatesPracticeDraftsAndOneExamplePerCategory() {
 
 - [ ] **Step 2: Run the focused test and verify RED**
 
-Run: `cd backend && ./mvnw -Dtest=MigrationTest#flywayCreatesPracticeDraftsAndOneExamplePerCategory test`
+Run: `cd backend && mvn -Dtest=MigrationTest#flywayCreatesPracticeDraftsAndOneExamplePerCategory test`
 
 Expected: FAIL because `PRACTICE_DRAFT` and `PRACTICE_EXAMPLE` do not exist.
 
 - [ ] **Step 3: Add V7 schema and seed content**
 
-Create `practice_draft` with owner/assignment/base-attempt foreign keys and CLOB fields, plus `practice_example` with a unique category foreign key, published flag, and all full-cycle texts. Insert one meaningful Russian example for each of:
+Create `practice_draft` with owner/assignment/base-attempt foreign keys and CLOB fields, plus `practice_example` with a unique category foreign key, published flag, and all full-cycle texts. Because curriculum categories are imported after Flyway, validate and idempotently import one meaningful Russian example from `curriculum/practice-examples.json` for each of:
 
 ```text
 INVERSION, HYPERBOLE, CROSS_DISCIPLINE, BACKCASTING,
@@ -72,14 +76,14 @@ Each example must contain a distinct situation, question, answer, reasoning, con
 
 - [ ] **Step 4: Run the focused test and verify GREEN**
 
-Run: `cd backend && ./mvnw -Dtest=MigrationTest test`
+Run: `cd backend && mvn -Dtest=MigrationTest test`
 
 Expected: all `MigrationTest` methods PASS.
 
 - [ ] **Step 5: Commit the persistence slice**
 
 ```bash
-git add backend/src/main/resources/db/migration/V7__practice_history_and_examples.sql backend/src/test/java/ru/questionhacker/trainer/MigrationTest.java
+git add backend/src/main/resources/db/migration/V8__practice_history_and_examples.sql backend/src/main/resources/curriculum/practice-examples.json backend/src/main/java/ru/questionhacker/trainer/curriculum/CurriculumImporter.java backend/src/test/java/ru/questionhacker/trainer/MigrationTest.java
 git commit -m "feat: persist practice drafts and examples"
 ```
 
@@ -122,7 +126,7 @@ Also assert Bob receives `404` for Alice's detail/draft, two attempts remain one
 
 - [ ] **Step 2: Run the focused test and verify RED**
 
-Run: `cd backend && ./mvnw -Dtest=PracticeCycleHistoryTest test`
+Run: `cd backend && mvn -Dtest=PracticeCycleHistoryTest test`
 
 Expected: FAIL with 404/405 because the new endpoints are absent.
 
@@ -174,7 +178,7 @@ The draft request has optional `baseAttemptId` plus four non-null strings with t
 
 - [ ] **Step 6: Run the focused tests and verify GREEN**
 
-Run: `cd backend && ./mvnw -Dtest=PracticeCycleHistoryTest,PracticeAssignmentTest test`
+Run: `cd backend && mvn -Dtest=PracticeCycleHistoryTest,PracticeAssignmentTest test`
 
 Expected: all selected tests PASS.
 
@@ -205,7 +209,7 @@ Cover first submission and accepted revision separately.
 
 - [ ] **Step 2: Run the focused lifecycle test and verify RED**
 
-Run: `cd backend && ./mvnw -Dtest=PracticeAttemptLifecycleTest test`
+Run: `cd backend && mvn -Dtest=PracticeAttemptLifecycleTest test`
 
 Expected: the new assertions FAIL because accepted attempts leave drafts behind.
 
@@ -215,7 +219,7 @@ Annotate `submit` and `revise` with `@Transactional`. Call `practice.deleteDraft
 
 - [ ] **Step 4: Run practice backend tests and verify GREEN**
 
-Run: `cd backend && ./mvnw -Dtest='ru.questionhacker.trainer.practice.*' test`
+Run: `cd backend && mvn -Dtest='ru.questionhacker.trainer.practice.*' test`
 
 Expected: all practice package tests PASS.
 
@@ -346,7 +350,7 @@ node --check frontend/auth.js
 node --check frontend/app.js
 node --check frontend/sw.js
 node --test frontend/tests/*.test.mjs
-cd backend && ./mvnw test
+cd backend && mvn test
 ```
 
 Expected: every command exits 0 with no failed tests.
@@ -373,4 +377,3 @@ git status --short
 ```
 
 Expected: no whitespace errors; only intentional implementation files remain changed.
-

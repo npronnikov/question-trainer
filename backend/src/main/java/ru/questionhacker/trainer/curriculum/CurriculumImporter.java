@@ -51,8 +51,10 @@ public class CurriculumImporter implements ApplicationRunner {
     public void run(ApplicationArguments args) throws Exception {
         JsonNode curriculum = read("curriculum/categories.json");
         JsonNode scenarios = read("curriculum/scenarios.json");
-        validate(curriculum, scenarios);
+        JsonNode practiceExamples = read("curriculum/practice-examples.json");
+        validate(curriculum, scenarios, practiceExamples);
         importCategories(curriculum.path("categories"));
+        importPracticeExamples(practiceExamples.path("examples"));
         importSources(curriculum.path("sources"));
         importTheoryAndContrasts(curriculum.path("categories"));
         importScenarios(scenarios.path("scenarios"));
@@ -64,9 +66,10 @@ public class CurriculumImporter implements ApplicationRunner {
         }
     }
 
-    private void validate(JsonNode curriculum, JsonNode scenarioDocument) {
+    private void validate(JsonNode curriculum, JsonNode scenarioDocument, JsonNode practiceDocument) {
         if (curriculum.path("schemaVersion").asInt() != 1
-                || scenarioDocument.path("schemaVersion").asInt() != 1) {
+                || scenarioDocument.path("schemaVersion").asInt() != 1
+                || practiceDocument.path("schemaVersion").asInt() != 1) {
             throw new IllegalStateException("Unsupported curriculum schema version");
         }
 
@@ -101,6 +104,26 @@ public class CurriculumImporter implements ApplicationRunner {
         }
         if (!codes.equals(CATEGORY_CODES)) {
             throw new IllegalStateException("Unexpected category set: " + codes);
+        }
+
+        JsonNode practiceExamples = practiceDocument.path("examples");
+        if (!practiceExamples.isArray() || practiceExamples.size() != CATEGORY_CODES.size()) {
+            throw new IllegalStateException("Practice requires exactly seven examples");
+        }
+        Set<String> exampleCategories = new HashSet<>();
+        for (JsonNode example : practiceExamples) {
+            String category = required(example, "category");
+            if (!exampleCategories.add(category) || !CATEGORY_CODES.contains(category)) {
+                throw new IllegalStateException("Invalid practice example category: " + category);
+            }
+            for (String field : List.of(
+                    "domain", "situation", "question", "answer", "reasoning",
+                    "solution", "recommendation")) {
+                required(example, field);
+            }
+        }
+        if (!exampleCategories.equals(CATEGORY_CODES)) {
+            throw new IllegalStateException("Unexpected practice example set: " + exampleCategories);
         }
 
         JsonNode scenarios = scenarioDocument.path("scenarios");
@@ -225,6 +248,24 @@ public class CurriculumImporter implements ApplicationRunner {
                     json.writeValueAsString(category.path("cases")),
                     category.path("mistake").asText(), category.path("cue").asText(),
                     json.writeValueAsString(category.path("strengthAnchors")));
+        }
+    }
+
+    private void importPracticeExamples(JsonNode examples) {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        for (JsonNode example : examples) {
+            String category = example.path("category").asText();
+            jdbc.update("""
+                    MERGE INTO practice_example(
+                      id, category_code, domain_text, situation_text, question_text,
+                      answer_text, reasoning_text, solution_text, recommendation_text,
+                      published, created_at
+                    ) KEY(category_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?)
+                    """, stableId("practice-example:" + category), category,
+                    example.path("domain").asText(), example.path("situation").asText(),
+                    example.path("question").asText(), example.path("answer").asText(),
+                    example.path("reasoning").asText(), example.path("solution").asText(),
+                    example.path("recommendation").asText(), now);
         }
     }
 

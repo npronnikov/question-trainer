@@ -78,4 +78,19 @@ class MigrationTest {
                 """, Integer.class);
         assertThat(count).isEqualTo(2);
     }
+
+    @Test
+    void flywayCreatesPracticeDraftsAndOneExamplePerCategory() {
+        Integer tables = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+                WHERE UPPER(TABLE_NAME) IN ('PRACTICE_DRAFT', 'PRACTICE_EXAMPLE')
+                """, Integer.class);
+
+        assertThat(tables).isEqualTo(2);
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM practice_example", Integer.class)).isEqualTo(7);
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(DISTINCT category_code) FROM practice_example", Integer.class))
+                .isEqualTo(7);
+    }
 }
