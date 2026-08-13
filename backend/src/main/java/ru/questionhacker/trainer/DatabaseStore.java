@@ -44,9 +44,9 @@ public class DatabaseStore {
         return jdbc.update("DELETE FROM chat_session WHERE owner_id=? AND id=?", ownerId, id) > 0;
     }
 
-    public void touchSession(UUID ownerId, UUID id, String title) {
-        jdbc.update("UPDATE chat_session SET title=?, updated_at=? WHERE owner_id=? AND id=?",
-                title, OffsetDateTime.now(ZoneOffset.UTC), ownerId, id);
+    public boolean touchSession(UUID ownerId, UUID id, String title) {
+        return jdbc.update("UPDATE chat_session SET title=?, updated_at=? WHERE owner_id=? AND id=?",
+                title, OffsetDateTime.now(ZoneOffset.UTC), ownerId, id) > 0;
     }
 
     public MessageRow addMessage(UUID ownerId, UUID sessionId, String role, String source, String content) {

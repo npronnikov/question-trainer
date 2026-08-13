@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -65,6 +66,12 @@ public class ApiController {
         return chat.createSession(auth.requireCurrentUser().id(), request == null ? null : request.title());
     }
 
+    @PatchMapping("/chat/sessions/{sessionId}")
+    public DatabaseStore.SessionRow renameSession(@PathVariable UUID sessionId,
+                                                   @Valid @RequestBody RenameSessionRequest request) {
+        return chat.renameSession(auth.requireCurrentUser().id(), sessionId, request.title());
+    }
+
     @DeleteMapping("/chat/sessions/{sessionId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteSession(@PathVariable UUID sessionId) {
@@ -88,6 +95,9 @@ public class ApiController {
     }
 
     public record CreateSessionRequest(@Size(max = 180) String title) {
+    }
+
+    public record RenameSessionRequest(@NotBlank @Size(max = 180) String title) {
     }
 
     public record SendMessageRequest(@NotBlank @Size(max = 12000) String text,

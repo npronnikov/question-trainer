@@ -47,6 +47,18 @@ public class ChatService {
         }
     }
 
+    public DatabaseStore.SessionRow renameSession(UUID ownerId, UUID sessionId, String title) {
+        requireSession(ownerId, sessionId);
+        String clean = title == null ? "" : title.strip();
+        if (clean.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Название не должно быть пустым");
+        }
+        if (!store.touchSession(ownerId, sessionId, clean)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Диалог не найден");
+        }
+        return requireSession(ownerId, sessionId);
+    }
+
     public List<DatabaseStore.MessageRow> messages(UUID ownerId, UUID sessionId) {
         requireSession(ownerId, sessionId);
         return store.listMessages(ownerId, sessionId);
@@ -142,7 +154,9 @@ public class ChatService {
 
     private String makeTitle(String text) {
         String oneLine = text.replaceAll("\\s+", " ").strip();
-        return oneLine.substring(0, Math.min(64, oneLine.length()));
+        int count = Math.min(30, oneLine.codePointCount(0, oneLine.length()));
+        int end = oneLine.offsetByCodePoints(0, count);
+        return oneLine.substring(0, end) + "...";
     }
 
     private String safe(String message) {

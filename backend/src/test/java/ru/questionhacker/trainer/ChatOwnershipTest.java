@@ -4,6 +4,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -98,6 +99,86 @@ class ChatOwnershipTest {
                         .with(user("alice"))
                         .with(csrf()))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void ownerRenamesSessionWithTrimmedTitle() throws Exception {
+        DatabaseStore.SessionRow own = store.createSession(alice.id(), "Новый диалог");
+
+        mvc.perform(patch("/api/chat/sessions/{id}", own.id())
+                        .with(user("alice"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"  Новый заголовок  "}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Новый заголовок"));
+    }
+
+    @Test
+    void renameRejectsBlankAndOversizedTitles() throws Exception {
+        DatabaseStore.SessionRow own = store.createSession(alice.id(), "Новый диалог");
+
+        mvc.perform(patch("/api/chat/sessions/{id}", own.id())
+                        .with(user("alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+
+        mvc.perform(patch("/api/chat/sessions/{id}", own.id())
+                        .with(user("alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"" + "x".repeat(181) + "\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void userCannotRenameAnotherUsersSession() throws Exception {
+        DatabaseStore.SessionRow foreign = store.createSession(bob.id(), "Bob session");
+
+        mvc.perform(patch("/api/chat/sessions/{id}", foreign.id())
+                        .with(user("alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"Украденное имя\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void firstMessageCreatesUnicodeSafeThirtyCodePointTitleWithSuffix() throws Exception {
+        DatabaseStore.SessionRow own = store.createSession(alice.id(), "Новый диалог");
+        String message = "😀".repeat(31);
+
+        mvc.perform(post("/api/chat/sessions/{id}/messages", own.id())
+                        .with(user("alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"" + message + "\"}"))
+                .andExpect(status().isOk());
+
+        org.assertj.core.api.Assertions.assertThat(store.findSession(alice.id(), own.id()).orElseThrow().title())
+                .isEqualTo("😀".repeat(30) + "...");
+    }
+
+    @Test
+    void firstMessageNormalizesWhitespaceAndManualTitleIsPreserved() throws Exception {
+        DatabaseStore.SessionRow automatic = store.createSession(alice.id(), "Новый диалог");
+        DatabaseStore.SessionRow manual = store.createSession(alice.id(), "Моё название");
+
+        mvc.perform(post("/api/chat/sessions/{id}/messages", automatic.id())
+                        .with(user("alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"  Один   два\\nтри  \"}"))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/chat/sessions/{id}/messages", manual.id())
+                        .with(user("alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"Первое сообщение\"}"))
+                .andExpect(status().isOk());
+
+        org.assertj.core.api.Assertions.assertThat(store.findSession(alice.id(), automatic.id()).orElseThrow().title())
+                .isEqualTo("Один два три...");
+        org.assertj.core.api.Assertions.assertThat(store.findSession(alice.id(), manual.id()).orElseThrow().title())
+                .isEqualTo("Моё название");
     }
 
     @Test
