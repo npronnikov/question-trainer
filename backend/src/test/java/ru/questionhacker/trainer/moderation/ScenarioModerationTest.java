@@ -1,8 +1,10 @@
 package ru.questionhacker.trainer.moderation;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -20,6 +22,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -64,14 +67,14 @@ class ScenarioModerationTest {
 
     @Test
     void generationScreensBadCasesBeforeReviewQueue() throws Exception {
-        when(generator.generate(anyInt(), anyString())).thenReturn(List.of(
-                goodDraft("Новая команда готовит запуск сервиса, но согласования скрывают главные риски и откладывают первые проверки."),
+        when(generator.generate(anyList(), anyString())).thenReturn(List.of(
+                goodDraftForSituation("Новая команда готовит запуск сервиса, но согласования скрывают главные риски и откладывают первые проверки."),
                 new ScenarioDraft("INVERSION", "REFRAMING", "L2", "ПРОДУКТ",
                         "Команда обсуждает тупик, но кейс одновременно требует двух главных техник и не имеет однозначной операции.",
                         "Какие действия приведут запуск к провалу?", "Подумайте об инверсии.",
                         List.of("INVERSION", "HYPERBOLE", "REFRAMING", "SIMPLIFICATION"),
                         "INVERSION", "Объяснение операции инверсии достаточно конкретно.", null, null),
-                goodDraft("Команда хочет убить клиента и гарантированно причинить ему вред во время проверки продукта.")));
+                goodDraftForSituation("Команда хочет убить клиента и гарантированно причинить ему вред во время проверки продукта.")));
 
         mvc.perform(post("/api/admin/scenario-candidates/generate")
                         .with(user("queue-admin").roles("ADMIN")).with(csrf())
@@ -104,7 +107,7 @@ class ScenarioModerationTest {
 
     @Test
     void approvalPublishesExactlyOnceAndAuditsOptimisticDecision() throws Exception {
-        when(generator.generate(anyInt(), anyString())).thenReturn(List.of(goodDraft(
+        when(generator.generate(anyList(), anyString())).thenReturn(List.of(goodDraftForSituation(
                 "Команда готовит новый процесс запуска и хочет заранее обнаружить действия, которые гарантированно сорвут результат.")));
         JsonNode candidate = generateOne();
         UUID id = UUID.fromString(candidate.path("id").asText());
@@ -136,7 +139,7 @@ class ScenarioModerationTest {
 
     @Test
     void rejectionRequiresReasonAndRejectedCandidateNeverPublishes() throws Exception {
-        when(generator.generate(anyInt(), anyString())).thenReturn(List.of(goodDraft(
+        when(generator.generate(anyList(), anyString())).thenReturn(List.of(goodDraftForSituation(
                 "Команда улучшает стабильный процесс, но продолжает добавлять проверки и больше не видит ядро создаваемой ценности.")));
         UUID id = UUID.fromString(generateOne().path("id").asText());
         int before = jdbc.queryForObject("SELECT COUNT(*) FROM scenario WHERE published=TRUE", Integer.class);
@@ -159,7 +162,7 @@ class ScenarioModerationTest {
 
     @Test
     void editedCandidateRunsAutomaticScreeningAgain() throws Exception {
-        when(generator.generate(anyInt(), anyString())).thenReturn(List.of(goodDraft(
+        when(generator.generate(anyList(), anyString())).thenReturn(List.of(goodDraftForSituation(
                 "Команда проектирует новый процесс и хочет заранее найти действия, которые гарантированно разрушат полезный результат.")));
         UUID id = UUID.fromString(generateOne().path("id").asText());
 
@@ -182,6 +185,35 @@ class ScenarioModerationTest {
                 .andExpect(jsonPath("$.rejectionReasons[0]").value("MULTIPLE_TECHNIQUES"));
     }
 
+    @Test
+    void generationContinuesCanonicalCategoryCycleAcrossSavedCandidates() throws Exception {
+        when(generator.generate(anyList(), anyString())).thenAnswer(invocation -> {
+            List<String> categories = invocation.getArgument(0);
+            return categories.stream().map(this::goodDraftForCategory).toList();
+        });
+
+        mvc.perform(post("/api/admin/scenario-candidates/generate")
+                        .with(user("queue-admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":8,\"model\":\"gpt-5.6-terra[high]\"}"))
+                .andExpect(status().isAccepted());
+        jdbc.update("UPDATE scenario_candidate SET status='REJECTED' WHERE category_code='INVERSION'");
+
+        mvc.perform(post("/api/admin/scenario-candidates/generate")
+                        .with(user("queue-admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"count\":1,\"model\":\"gpt-5.6-terra[high]\"}"))
+                .andExpect(status().isAccepted());
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> categories = ArgumentCaptor.forClass(List.class);
+        verify(generator, times(2)).generate(categories.capture(), anyString());
+        assertThat(categories.getAllValues().get(0)).containsExactly(
+                "INVERSION", "HYPERBOLE", "CROSS_DISCIPLINE", "BACKCASTING",
+                "PROVOCATION", "REFRAMING", "SIMPLIFICATION", "INVERSION");
+        assertThat(categories.getAllValues().get(1)).containsExactly("HYPERBOLE");
+    }
+
     private JsonNode generateOne() throws Exception {
         String response = mvc.perform(post("/api/admin/scenario-candidates/generate")
                         .with(user("queue-admin").roles("ADMIN")).with(csrf())
@@ -191,12 +223,29 @@ class ScenarioModerationTest {
         return json.readTree(response).get(0);
     }
 
-    private ScenarioDraft goodDraft(String situation) {
+    private ScenarioDraft goodDraftForSituation(String situation) {
         return new ScenarioDraft("INVERSION", null, "L2", "ПРОДУКТ", situation,
                 "Какие три конкретных действия гарантированно приведут этот процесс к провалу?",
                 "Найдите причинные механизмы нежелательного исхода, не называя ответ.",
                 List.of("INVERSION", "HYPERBOLE", "REFRAMING", "SIMPLIFICATION"),
                 "INVERSION", "Вопрос переворачивает цель и ищет конкретные механизмы провала.",
+                null, null);
+    }
+
+    private ScenarioDraft goodDraftForCategory(String category) {
+        List<String> options = java.util.stream.Stream.concat(
+                        java.util.stream.Stream.of(category),
+                        java.util.stream.Stream.of(
+                                        "INVERSION", "HYPERBOLE", "CROSS_DISCIPLINE",
+                                        "BACKCASTING", "PROVOCATION", "REFRAMING", "SIMPLIFICATION")
+                                .filter(item -> !item.equals(category)))
+                .limit(4).toList();
+        return new ScenarioDraft(category, null, "L2", "ПРОДУКТ",
+                "Команда готовит новый рабочий процесс, но привычные решения скрывают главное ограничение и откладывают проверку результата.",
+                "Какой вопрос поможет изменить рамку и обнаружить новый проверяемый ход?",
+                "Ищите одну основную мыслительную операцию, не называя её в подсказке.",
+                options, category,
+                "Вопрос применяет одну заданную операцию и открывает новый класс проверяемых решений.",
                 null, null);
     }
 }

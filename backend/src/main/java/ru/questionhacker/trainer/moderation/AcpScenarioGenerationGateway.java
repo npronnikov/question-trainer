@@ -30,19 +30,33 @@ public class AcpScenarioGenerationGateway implements ScenarioGenerationGateway {
     }
 
     @Override
-    public List<ScenarioDraft> generate(int count, String requestedModel) {
+    public List<ScenarioDraft> generate(List<String> categories, String requestedModel) {
         String model = requestedModel == null || requestedModel.isBlank()
                 ? properties.acp().defaultModel() : requestedModel.strip();
         if (model != null && !model.isBlank() && !properties.acp().models().contains(model)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестная модель: " + model);
         }
         try {
-            String raw = acp.ask(prompt.replace("{{count}}", Integer.toString(count)), model, ignored -> { });
+            String rendered = prompt
+                    .replace("{{count}}", Integer.toString(categories.size()))
+                    .replace("{{categories}}", json.writeValueAsString(categories));
+            String raw = acp.ask(rendered, model, ignored -> { });
             if (!raw.strip().startsWith("[") || !raw.strip().endsWith("]")) {
                 throw new IllegalArgumentException("Generator must return one JSON array");
             }
             List<ScenarioDraft> drafts = json.readValue(raw.strip(), new TypeReference<>() { });
-            if (drafts.size() != count) throw new IllegalArgumentException("Generator returned wrong count");
+            if (drafts.size() != categories.size()) {
+                throw new IllegalArgumentException("Generator returned wrong count");
+            }
+            for (int index = 0; index < categories.size(); index++) {
+                String expected = categories.get(index);
+                ScenarioDraft draft = drafts.get(index);
+                if (draft == null || !expected.equals(draft.category())
+                        || !expected.equals(draft.correctCategory())) {
+                    throw new IllegalArgumentException(
+                            "Generator returned wrong category at position " + index);
+                }
+            }
             return drafts;
         } catch (IOException error) {
             throw new IllegalArgumentException("Invalid generator JSON", error);
@@ -50,7 +64,8 @@ public class AcpScenarioGenerationGateway implements ScenarioGenerationGateway {
     }
 
     private String readPrompt() {
-        try (var input = new ClassPathResource("prompts/scenario-candidates-v1.md").getInputStream()) {
+        try (var input = new ClassPathResource(
+                "prompts/scenario-candidates-cycled-v1.md").getInputStream()) {
             return new String(input.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException error) {
             throw new IllegalStateException("Cannot load scenario candidate prompt", error);

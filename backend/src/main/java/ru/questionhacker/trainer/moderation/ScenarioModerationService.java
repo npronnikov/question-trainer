@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -50,7 +51,17 @@ public class ScenarioModerationService {
         if (count < 1 || count > 20) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Количество должно быть от 1 до 20");
         }
-        List<ScenarioDraft> drafts = generator.generate(count, model);
+        moderation.lockGenerationSequence();
+        List<String> categoryOrder = moderation.categoryCodes();
+        if (categoryOrder.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Категории программы не загружены");
+        }
+        long start = moderation.candidateCount();
+        List<String> requestedCategories = IntStream.range(0, count)
+                .mapToObj(index -> categoryOrder.get(
+                        (int) ((start + index) % categoryOrder.size())))
+                .toList();
+        List<ScenarioDraft> drafts = generator.generate(requestedCategories, model);
         if (drafts == null || drafts.size() != count) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Генератор вернул неверное количество кейсов");
         }

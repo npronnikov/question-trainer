@@ -17,6 +17,23 @@ public class ModerationRepository {
         this.jdbc = jdbc;
     }
 
+    public void lockGenerationSequence() {
+        jdbc.queryForObject("""
+                SELECT code FROM category
+                ORDER BY sort_order
+                LIMIT 1 FOR UPDATE
+                """, String.class);
+    }
+
+    public List<String> categoryCodes() {
+        return jdbc.queryForList("SELECT code FROM category ORDER BY sort_order", String.class);
+    }
+
+    public long candidateCount() {
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM scenario_candidate", Long.class);
+        return count == null ? 0L : count;
+    }
+
     public void insert(CandidateRow row) {
         jdbc.update("""
                 INSERT INTO scenario_candidate(
