@@ -163,6 +163,20 @@ test('practice progress updates only the active form rail', async () => {
   assert.doesNotMatch(app, /\$\$\('\.practice-progress span'\)/);
 });
 
+test('practice hydrates server cycles and debounces owner draft persistence', async () => {
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(app, /api\('\/practice\/cycles'\)/);
+  assert.match(app, /api\('\/practice\/examples\/random'\)/);
+  assert.match(app, /`\/practice\/cycles\/\$\{assignmentId\}`/);
+  assert.match(app, /`\/practice\/cycles\/\$\{practiceAssignment\.assignmentId\}\/draft`/);
+  assert.match(app, /practiceLoadSequence/);
+  assert.match(app, /practiceDraftTimer/);
+  assert.match(app, /window\.setTimeout\([\s\S]*650\)/);
+  assert.match(app, /setAttribute\('aria-current'/);
+  assert.match(app, /classList\.toggle\('is-practice'/);
+});
+
 test('trainer loads ignore stale responses and clear controls on failure', async () => {
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
 
@@ -196,10 +210,10 @@ test('practice and coach are independent hash routes', async () => {
   assert.doesNotMatch(css, /\.coach-mode-switch/);
 });
 
-test('theory worked examples invalidate the offline shell cache', async () => {
+test('practice history invalidates the offline shell cache', async () => {
   const serviceWorker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
 
-  assert.match(serviceWorker, /const CACHE = 'question-hacker-v11';/);
+  assert.match(serviceWorker, /const CACHE = 'question-hacker-v12';/);
 });
 
 test('boot activates the hash route before background API hydration', async () => {

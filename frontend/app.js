@@ -37,6 +37,13 @@
   let practiceAssignment = null;
   let practiceAttempt = null;
   let attemptPoll = null;
+  let practiceCycles = [];
+  let practiceInitialized = false;
+  let practiceLoadSequence = 0;
+  let practiceDraftTimer = null;
+  let practiceDraftPromise = null;
+  let practiceDraftDirty = false;
+  let practiceEditorBaseAttemptId = null;
   let moderationStatus = 'PENDING_REVIEW';
   let moderationRows = [];
   let selectedCandidate = null;
@@ -558,6 +565,7 @@
   function syncLearningRoute(route) {
     const chat = route === 'coach';
     const practicePanel = $('#practice-panel');
+    const practiceHistory = $('#practice-history-tools');
     const messageFeed = $('#message-feed');
     const composer = $('#composer');
     const sessionTools = $('#session-tools');
@@ -565,7 +573,9 @@
 
     practicePanel.classList.toggle('is-hidden', chat);
     practicePanel.inert = chat;
-    $('#new-practice').classList.toggle('is-hidden', chat);
+    practiceHistory.classList.toggle('is-hidden', chat);
+    practiceHistory.inert = chat;
+    $('#view-learning').classList.toggle('is-practice', !chat);
     messageFeed.classList.toggle('is-hidden', !chat);
     messageFeed.inert = !chat;
     composer.classList.toggle('is-hidden', !chat);
@@ -578,38 +588,221 @@
     $('#learning-sidebar-title').textContent = chat ? 'Диалоги' : 'Полный цикл';
     $('#chat-title').textContent = chat ? 'Тренер вопросов' : 'Практика полного цикла';
     if (chat) initChat();
+    else initPractice();
+  }
+
+  async function initPractice() {
+    if (practiceInitialized) return;
+    practiceInitialized = true;
+    await Promise.allSettled([loadPracticeCycles(), loadPracticeExample()]);
+  }
+
+  async function loadPracticeCycles() {
+    try {
+      practiceCycles = await api('/practice/cycles');
+      renderPracticeCycles();
+    } catch (error) {
+      $('#practice-history-status').textContent = 'История временно недоступна';
+      showToast(error.message);
+    }
+  }
+
+  function renderPracticeCycles() {
+    const selectedId = practiceAssignment?.assignmentId;
+    $('#practice-history-status').textContent = practiceCycles.length
+      ? `${practiceCycles.length} ${practiceCycles.length === 1 ? 'цикл' : 'циклов'} · черновики сохраняются`
+      : 'Сохранённых циклов пока нет';
+    $('#practice-cycle-list').innerHTML = practiceCycles.map(cycle => `
+      <div role="listitem">
+        <button class="practice-cycle-row" type="button" data-practice-cycle="${escapeHtml(cycle.assignmentId)}">
+          <span class="practice-cycle-meta"><span>${escapeHtml(cycle.targetCategory.name)}</span><span>${escapeHtml(practiceStatusLabel(cycle.status))}</span></span>
+          <strong>${escapeHtml(cycle.situation)}</strong>
+          <small>${escapeHtml(cycle.domain)} · ${escapeHtml(formatDate(cycle.updatedAt))}${cycle.attemptCount ? ` · попыток: ${cycle.attemptCount}` : ''}</small>
+        </button>
+      </div>`).join('');
+    $$('.practice-cycle-row', $('#practice-cycle-list')).forEach(button => {
+      const active = button.dataset.practiceCycle === selectedId;
+      button.setAttribute('aria-current', String(active));
+      button.addEventListener('click', () => selectPracticeCycle(button.dataset.practiceCycle));
+    });
+  }
+
+  function practiceStatusLabel(status) {
+    return ({
+      DRAFT: 'Черновик', EVALUATING: 'На оценке', PASSED: 'Зачёт',
+      NEEDS_REVISION: 'На доработке', UNVERIFIED: 'Не проверено'
+    })[status] || status || 'Черновик';
+  }
+
+  async function loadPracticeExample() {
+    try {
+      const example = await api('/practice/examples/random');
+      $('#practice-example-category').textContent = `ПРИМЕР · ${example.targetCategory.name}`;
+      $('#practice-example-situation').textContent = `${example.domain}. ${example.situation}`;
+      Object.keys(FIELD_LABELS).forEach(field => {
+        $(`#practice-example-${field}`).textContent = example[field];
+      });
+      $('#practice-example-recommendation').textContent = example.recommendation;
+    } catch (error) {
+      $('#practice-example-category').textContent = 'ПРИМЕР ВРЕМЕННО НЕДОСТУПЕН';
+      $('#practice-example-situation').textContent = error.message;
+    }
+  }
+
+  async function showPracticeHome(refreshExample = true) {
+    await flushPracticeDraft();
+    clearAttemptPoll();
+    practiceLoadSequence += 1;
+    practiceAssignment = null;
+    practiceAttempt = null;
+    practiceEditorBaseAttemptId = null;
+    $('#practice-workspace').classList.add('is-hidden');
+    $('#practice-empty').classList.remove('is-hidden');
+    renderPracticeCycles();
+    if (refreshExample) await loadPracticeExample();
   }
 
   async function startPractice() {
+    await flushPracticeDraft();
     clearAttemptPoll();
     const buttons = [$('#start-practice'), $('#new-practice')];
     buttons.forEach(button => setBusy(button, true));
     try {
-      practiceAssignment = await api('/practice/assignments', { method: 'POST', body: '{}' });
-      practiceAttempt = null;
-      $('#practice-empty').classList.add('is-hidden');
-      $('#practice-workspace').classList.remove('is-hidden');
-      $('#practice-domain').textContent = `${practiceAssignment.domain} · ${practiceAssignment.targetCategory.name}`;
-      $('#practice-situation').textContent = practiceAssignment.situation;
-      $('#practice-guidance').textContent = practiceAssignment.targetCategory.guidance;
-      $('#practice-form').reset();
-      setRevisionFields([]);
-      $('#practice-attempt').textContent = 'Попытка 1';
-      $('#practice-feedback').classList.add('is-hidden');
-      $('#practice-error').textContent = '';
-      updatePracticeProgress();
+      const assignment = await api('/practice/assignments', { method: 'POST', body: '{}' });
+      await loadPracticeCycles();
+      await selectPracticeCycle(assignment.assignmentId, { skipFlush: true });
       $('#practice-question').focus();
     } catch (error) {
       showToast(error.message);
     } finally {
       buttons.forEach(button => setBusy(button, false));
-      $('#new-practice').textContent = 'Новая ситуация';
+      $('#new-practice').textContent = '＋ Новая ситуация';
       $('#start-practice').innerHTML = 'Получить ситуацию <span>→</span>';
     }
   }
 
+  async function selectPracticeCycle(assignmentId, options = {}) {
+    if (!options.skipFlush) await flushPracticeDraft();
+    clearAttemptPoll();
+    const sequence = ++practiceLoadSequence;
+    try {
+      const cycle = await api(`/practice/cycles/${assignmentId}`);
+      if (sequence !== practiceLoadSequence) return;
+      renderPracticeCycle(cycle, options.focusFeedback === true);
+      renderPracticeCycles();
+    } catch (error) {
+      if (sequence !== practiceLoadSequence) return;
+      showToast(error.message);
+    }
+  }
+
+  function renderPracticeCycle(cycle, focusFeedback = false) {
+    practiceAssignment = cycle.assignment;
+    practiceAttempt = cycle.attempts.at(-1) || null;
+    practiceEditorBaseAttemptId = cycle.editor.baseAttemptId;
+    practiceDraftDirty = false;
+    $('#practice-empty').classList.add('is-hidden');
+    $('#practice-workspace').classList.remove('is-hidden');
+    $('#practice-domain').textContent = `${practiceAssignment.domain} · ${practiceAssignment.targetCategory.name}`;
+    $('#practice-situation').textContent = practiceAssignment.situation;
+    $('#practice-guidance').textContent = practiceAssignment.targetCategory.guidance;
+    Object.keys(FIELD_LABELS).forEach(field => {
+      $(`#practice-${field}`).value = cycle.editor[field] || '';
+    });
+    const locked = cycle.editor.editableFields.length === 0;
+    setRevisionFields(cycle.editor.editableFields, locked);
+    $('#practice-attempt').textContent = practiceAttempt
+      ? `Попытка ${practiceAttempt.attemptNumber} · ${practiceStatusLabel(practiceAttempt.status)}`
+      : 'Попытка 1 · черновик';
+    $('#practice-save-status').textContent = cycle.draft
+      ? `Сохранено ${formatTime(cycle.draft.updatedAt)}` : locked ? 'Цикл завершён' : 'Черновик на сервере';
+    $('#practice-save-status').classList.remove('is-error');
+    $('#practice-error').textContent = '';
+    renderPracticeTimeline(cycle.attempts);
+    $('#practice-feedback').classList.add('is-hidden');
+    if (practiceAttempt?.assessment && TERMINAL_ATTEMPT_STATUSES.has(practiceAttempt.status)) {
+      renderPracticeFeedback(practiceAttempt, focusFeedback);
+    } else {
+      setBusy($('#submit-practice'), false, practiceAttempt?.status === 'EVALUATING' ? 'Оцениваем…' : 'Отправить на оценку →');
+      $('#submit-practice').disabled = locked;
+      updatePracticeProgress(practiceAttempt?.status === 'EVALUATING');
+      if (practiceAttempt?.status === 'EVALUATING') followAttempt(practiceAttempt.attemptId);
+    }
+  }
+
+  function renderPracticeTimeline(attempts) {
+    $('#practice-timeline').innerHTML = attempts.map(attempt => {
+      const assessment = attempt.assessment;
+      const recommendation = assessment
+        ? `${assessment.feedback || ''}${assessment.priorityCorrection?.what ? ` ${assessment.priorityCorrection.what}: ${assessment.priorityCorrection.why}` : ''}`
+        : 'Модель оценивает полный цикл…';
+      return `<article class="practice-attempt-card">
+        <header class="practice-attempt-head"><span>Попытка ${attempt.attemptNumber}</span><span>${escapeHtml(practiceStatusLabel(attempt.status))} · ${escapeHtml(formatDate(attempt.createdAt))}</span></header>
+        <div class="practice-attempt-steps">
+          ${Object.keys(FIELD_LABELS).map(field => `<section class="practice-attempt-step"><span>${escapeHtml(FIELD_LABELS[field])}</span><p>${escapeHtml(attempt[field])}</p></section>`).join('')}
+        </div>
+        <footer class="practice-attempt-model"><strong>Рекомендация модели</strong><p>${escapeHtml(recommendation.trim())}</p></footer>
+      </article>`;
+    }).join('');
+  }
+
   function practiceValues() {
     return Object.fromEntries(Object.keys(FIELD_LABELS).map(field => [field, $(`#practice-${field}`).value.trim()]));
+  }
+
+  function schedulePracticeDraft() {
+    if (!practiceAssignment || $('#submit-practice').disabled) return;
+    practiceDraftDirty = true;
+    $('#practice-save-status').textContent = 'Есть несохранённые изменения';
+    $('#practice-save-status').classList.remove('is-error');
+    window.clearTimeout(practiceDraftTimer);
+    practiceDraftTimer = window.setTimeout(() => {
+      practiceDraftTimer = null;
+      savePracticeDraft().catch(() => {});
+    }, 650);
+  }
+
+  function savePracticeDraft() {
+    if (!practiceAssignment || !practiceDraftDirty) return practiceDraftPromise || Promise.resolve();
+    const assignmentId = practiceAssignment.assignmentId;
+    const draftPath = `/practice/cycles/${practiceAssignment.assignmentId}/draft`;
+    const payload = { baseAttemptId: practiceEditorBaseAttemptId, ...practiceValues() };
+    practiceDraftDirty = false;
+    const previous = practiceDraftPromise || Promise.resolve();
+    practiceDraftPromise = previous.catch(() => {}).then(() => api(draftPath, {
+      method: 'PUT', body: JSON.stringify(payload)
+    })).then(draft => {
+      if (practiceAssignment?.assignmentId === assignmentId && !practiceDraftDirty) {
+        $('#practice-save-status').textContent = `Сохранено ${formatTime(draft.updatedAt)}`;
+        $('#practice-save-status').classList.remove('is-error');
+      }
+      loadPracticeCycles();
+      return draft;
+    }).catch(error => {
+      if (practiceAssignment?.assignmentId === assignmentId) {
+        practiceDraftDirty = true;
+        $('#practice-save-status').textContent = 'Не удалось сохранить черновик';
+        $('#practice-save-status').classList.add('is-error');
+      }
+      throw error;
+    }).finally(() => {
+      if (practiceDraftPromise === current) practiceDraftPromise = null;
+    });
+    const current = practiceDraftPromise;
+    return current;
+  }
+
+  async function flushPracticeDraft() {
+    if (practiceDraftTimer) {
+      window.clearTimeout(practiceDraftTimer);
+      practiceDraftTimer = null;
+    }
+    try {
+      if (practiceDraftDirty) await savePracticeDraft();
+      else if (practiceDraftPromise) await practiceDraftPromise;
+    } catch (_) {
+      // A failed autosave must not discard local input or block an explicit submission.
+    }
   }
 
   function validatePractice(values, revisionFields = null) {
@@ -631,6 +824,7 @@
       $('#practice-error').textContent = error;
       return;
     }
+    await flushPracticeDraft();
     $('#practice-error').textContent = '';
     const revision = practiceAttempt?.status === 'NEEDS_REVISION';
     const path = revision ? `/practice/attempts/${practiceAttempt.attemptId}/revisions` : '/practice/attempts';
@@ -641,7 +835,9 @@
     updatePracticeProgress(true);
     try {
       practiceAttempt = await api(path, { method: 'POST', body: JSON.stringify(body) });
+      practiceDraftDirty = false;
       $('#practice-attempt').textContent = `Попытка ${practiceAttempt.attemptNumber} · оценка сервера`;
+      await loadPracticeCycles();
       await followAttempt(practiceAttempt.attemptId);
     } catch (requestError) {
       $('#practice-error').textContent = requestError.message;
@@ -656,7 +852,8 @@
         practiceAttempt = await api(`/practice/attempts/${attemptId}`);
         if (TERMINAL_ATTEMPT_STATUSES.has(practiceAttempt.status)) {
           clearAttemptPoll();
-          renderPracticeFeedback(practiceAttempt);
+          await loadPracticeCycles();
+          await selectPracticeCycle(practiceAttempt.assignmentId, { skipFlush: true, focusFeedback: true });
           return;
         }
         attemptPoll = window.setTimeout(poll, 900);
@@ -674,7 +871,7 @@
     attemptPoll = null;
   }
 
-  function renderPracticeFeedback(attempt) {
+  function renderPracticeFeedback(attempt, focus = true) {
     const assessment = attempt.assessment;
     const passed = attempt.status === 'PASSED';
     const unverified = attempt.status === 'UNVERIFIED';
@@ -704,15 +901,17 @@
       $('#practice-revise').addEventListener('click', () => focusFirstRevision(assessment.fieldsToRevise));
     }
     updatePracticeProgress(false, passed);
-    panel.focus({ preventScroll: true });
-    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (focus) {
+      panel.focus({ preventScroll: true });
+      panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   }
 
-  function setRevisionFields(fields) {
-    const revision = fields.length > 0;
+  function setRevisionFields(fields, locked = false) {
+    const revision = !locked && fields.length > 0 && fields.length < Object.keys(FIELD_LABELS).length;
     Object.keys(FIELD_LABELS).forEach(field => {
       const input = $(`#practice-${field}`);
-      const editable = !revision || fields.includes(field);
+      const editable = !locked && (!revision || fields.includes(field));
       input.disabled = !editable;
       input.closest('.practice-form')?.classList.toggle('is-revision', revision);
       input.classList.toggle('needs-revision', revision && editable);
@@ -734,8 +933,12 @@
   function bindPractice() {
     $('#start-practice').addEventListener('click', startPractice);
     $('#new-practice').addEventListener('click', startPractice);
+    $('#practice-home').addEventListener('click', () => showPracticeHome(true));
     $('#practice-form').addEventListener('submit', submitPractice);
-    $('#practice-form').addEventListener('input', () => updatePracticeProgress());
+    $('#practice-form').addEventListener('input', () => {
+      updatePracticeProgress();
+      schedulePracticeDraft();
+    });
     $('#model-select').addEventListener('change', event => { selectedModel = event.target.value || null; });
   }
 
