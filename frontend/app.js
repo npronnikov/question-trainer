@@ -32,6 +32,10 @@
   let selectedModel = null;
   let availableModels = [];
   let currentSessionId = null;
+  let chatSessions = [];
+  let editingSessionId = null;
+  let editingSessionValue = '';
+  let renameSubmitting = false;
   let sending = false;
   let activeStream = null;
   let practiceAssignment = null;
@@ -970,9 +974,93 @@
   }
 
   function renderSessions(sessions) {
-    $('#session-list').innerHTML = sessions.map(session => `<div class="session-row ${session.id === currentSessionId ? 'is-active' : ''}"><button class="session-item" data-session="${session.id}"><strong>${escapeHtml(session.title)}</strong><small>${formatDate(session.updatedAt)}</small></button><button class="session-delete" data-delete-session="${session.id}" data-title="${escapeHtml(session.title)}" aria-label="Удалить диалог">×</button></div>`).join('');
+    chatSessions = sessions;
+    $('#session-list').innerHTML = sessions.map(session => {
+      const active = session.id === currentSessionId ? 'is-active' : '';
+      if (session.id === editingSessionId) {
+        return `<div class="session-row is-editing ${active}"><form class="session-rename-form" data-rename-form="${session.id}">
+          <label class="visually-hidden" for="session-title-${session.id}">Название диалога</label>
+          <input class="session-title-input" id="session-title-${session.id}" maxlength="180" value="${escapeHtml(editingSessionValue)}" autocomplete="off">
+          <button class="session-rename-save" type="submit" aria-label="Сохранить название">✓</button>
+          <button class="session-rename-cancel" type="button" data-cancel-rename aria-label="Отменить переименование">×</button>
+        </form></div>`;
+      }
+      return `<div class="session-row ${active}"><button class="session-item" data-session="${session.id}"><strong>${escapeHtml(session.title)}</strong><small>${formatDate(session.updatedAt)}</small></button><button class="session-rename" data-rename-session="${session.id}" aria-label="Переименовать диалог">✎</button><button class="session-delete" data-delete-session="${session.id}" data-title="${escapeHtml(session.title)}" aria-label="Удалить диалог">×</button></div>`;
+    }).join('');
     $$('.session-item').forEach(button => button.addEventListener('click', () => selectSession(button.dataset.session)));
+    $$('.session-rename').forEach(button => button.addEventListener('click', () => beginSessionRename(button.dataset.renameSession)));
     $$('.session-delete').forEach(button => button.addEventListener('click', () => requestDeleteSession(button.dataset.deleteSession, button.dataset.title)));
+    $$('.session-rename-form').forEach(form => bindSessionRenameForm(form));
+  }
+
+  function beginSessionRename(sessionId) {
+    const session = chatSessions.find(item => item.id === sessionId);
+    if (!session) return;
+    editingSessionId = sessionId;
+    editingSessionValue = session.title;
+    renderSessions(chatSessions);
+    const input = $(`#session-title-${sessionId}`);
+    input?.focus();
+    input?.select();
+  }
+
+  function cancelSessionRename() {
+    if (renameSubmitting) return;
+    editingSessionId = null;
+    editingSessionValue = '';
+    renderSessions(chatSessions);
+  }
+
+  function bindSessionRenameForm(form) {
+    const sessionId = form.dataset.renameForm;
+    const input = $('.session-title-input', form);
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      saveSessionRename(sessionId, input.value);
+    });
+    input.addEventListener('input', () => { editingSessionValue = input.value; });
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        saveSessionRename(sessionId, input.value);
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        cancelSessionRename();
+      }
+    });
+    input.addEventListener('blur', event => {
+      if (event.relatedTarget?.closest('.session-row') === form.closest('.session-row')) return;
+      window.setTimeout(() => {
+        if (!renameSubmitting && editingSessionId === sessionId) cancelSessionRename();
+      }, 0);
+    });
+    $('[data-cancel-rename]', form).addEventListener('click', cancelSessionRename);
+  }
+
+  async function saveSessionRename(sessionId, rawTitle) {
+    if (renameSubmitting) return;
+    const title = rawTitle.trim();
+    if (!title) {
+      showToast('Название не должно быть пустым');
+      $(`#session-title-${sessionId}`)?.focus();
+      return;
+    }
+    renameSubmitting = true;
+    try {
+      const updated = await api(`/chat/sessions/${sessionId}`, {
+        method: 'PATCH', body: JSON.stringify({ title })
+      });
+      chatSessions = chatSessions.map(session => session.id === updated.id ? updated : session);
+      editingSessionId = null;
+      editingSessionValue = '';
+      renderSessions(chatSessions);
+    } catch (error) {
+      showToast(error.message);
+      $(`#session-title-${sessionId}`)?.focus();
+    } finally {
+      renameSubmitting = false;
+    }
   }
 
   async function reloadSessions(preferredId) {

@@ -219,6 +219,21 @@ test('practice and coach are independent hash routes', async () => {
   assert.doesNotMatch(css, /\.coach-mode-switch/);
 });
 
+test('coach dialogs are renamed inline through the server', async () => {
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+  const css = await fs.readFile(new URL('styles.css', frontend), 'utf8');
+
+  assert.match(app, /class="session-rename"/);
+  assert.match(app, /`\/chat\/sessions\/\$\{sessionId\}`[\s\S]*method: 'PATCH'/);
+  assert.match(app, /event\.key === 'Enter'/);
+  assert.match(app, /event\.key === 'Escape'/);
+  assert.match(app, /addEventListener\('blur'/);
+  assert.match(app, /renameSubmitting/);
+  assert.doesNotMatch(app, /slice\(0,\s*30\)|substring\(0,\s*30\)/);
+  assert.match(css, /\.session-rename/);
+  assert.match(css, /\.session-title-input/);
+});
+
 test('practice history invalidates the offline shell cache', async () => {
   const serviceWorker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
 

@@ -330,15 +330,25 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visib
 .icon-button { width: 40px; height: 40px; border-radius: 50%; background: var(--acid); color: var(--ink); font-size: 24px; }
 .icon-button:hover { transform: rotate(8deg); }
 .session-list { display: flex; flex-direction: column; gap: 6px; overflow: auto; }
-.session-row { display: grid; grid-template-columns: minmax(0, 1fr) 34px; align-items: center; border-radius: 12px; color: #b8bab1; }
+.session-row { display: grid; grid-template-columns: minmax(0, 1fr) 30px 34px; align-items: center; border-radius: 12px; color: #b8bab1; }
 .session-row:hover { background: rgba(255,255,255,.06); color: white; }
 .session-row.is-active { background: var(--acid); color: var(--ink); }
 .session-item { min-width: 0; width: 100%; padding: 13px 8px 13px 14px; border: 0; background: transparent; color: inherit; border-radius: 12px 0 0 12px; text-align: left; cursor: pointer; }
 .session-item strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
 .session-item small { display: block; margin-top: 5px; opacity: .65; font: 9px var(--mono); }
+.session-rename, .session-rename-save, .session-rename-cancel { width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; line-height: 1; opacity: .55; }
+.session-rename { font-size: 16px; }
+.session-rename:hover, .session-rename:focus-visible, .session-rename-save:hover, .session-rename-save:focus-visible { background: rgba(255,255,255,.12); color: white; opacity: 1; }
+.session-row.is-active .session-rename:hover, .session-row.is-active .session-rename:focus-visible, .session-row.is-active .session-rename-save:hover, .session-row.is-active .session-rename-save:focus-visible { background: rgba(16,17,15,.13); color: var(--ink); }
 .session-delete { width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; font-size: 20px; line-height: 1; opacity: .55; }
 .session-delete:hover, .session-delete:focus-visible { background: rgba(255,90,60,.18); color: #ff795d; opacity: 1; }
 .session-row.is-active .session-delete:hover, .session-row.is-active .session-delete:focus-visible { background: rgba(16,17,15,.13); color: #9d2514; }
+.session-rename-form { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) 30px 30px; gap: 2px; align-items: center; padding: 7px 4px 7px 8px; }
+.session-title-input { min-width: 0; width: 100%; padding: 7px 8px; border: 1px solid rgba(255,255,255,.25); border-radius: 7px; background: rgba(0,0,0,.18); color: inherit; font: 13px var(--sans); outline: none; }
+.session-title-input:focus { border-color: var(--acid); box-shadow: 0 0 0 2px rgba(215,255,62,.16); }
+.session-row.is-active .session-title-input { border-color: rgba(16,17,15,.3); background: rgba(255,255,255,.45); }
+.session-rename-save { font-size: 14px; }
+.session-rename-cancel { font-size: 18px; }
 .agent-card { width: 100%; margin-top: auto; padding: 17px; border: 1px solid var(--white-line); border-radius: 17px; background: rgba(255,255,255,.035); color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .agent-card:hover, .agent-card:focus-visible { border-color: rgba(204,255,41,.65); background: rgba(255,255,255,.07); }
 .agent-card-head { display: flex; align-items: center; gap: 9px; font-size: 13px; }
