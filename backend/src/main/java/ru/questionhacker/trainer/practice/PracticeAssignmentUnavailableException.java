@@ -14,13 +14,6 @@ public final class PracticeAssignmentUnavailableException extends RuntimeExcepti
         this.code = code;
     }
 
-    public static PracticeAssignmentUnavailableException incomplete() {
-        return new PracticeAssignmentUnavailableException(
-                HttpStatus.CONFLICT,
-                "PRACTICE_ASSIGNMENT_INCOMPLETE",
-                "Сначала завершите текущую ситуацию и получите зачёт.");
-    }
-
     public static PracticeAssignmentUnavailableException exhausted() {
         return new PracticeAssignmentUnavailableException(
                 HttpStatus.NOT_FOUND,

@@ -94,31 +94,27 @@ class PracticeAssignmentTest {
     }
 
     @Test
-    void unfinishedDraftBlocksAnotherAssignment() throws Exception {
+    void unfinishedDraftDoesNotBlockAnotherAssignment() throws Exception {
         publishForPractice("INVERSION", 0);
         publishForPractice("HYPERBOLE", 0);
         assignment("practice-alice");
 
-        mvc.perform(post("/api/practice/assignments")
-                        .with(user("practice-alice")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("PRACTICE_ASSIGNMENT_INCOMPLETE"));
+        UUID second = assignment("practice-alice");
+
+        assertThat(category(second)).isEqualTo("HYPERBOLE");
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"EVALUATING", "NEEDS_REVISION", "UNVERIFIED"})
-    void everyNonPassedLatestStatusBlocksAnotherAssignment(String attemptStatus) throws Exception {
+    void unfinishedLatestStatusDoesNotBlockAnotherAssignment(String attemptStatus) throws Exception {
         publishForPractice("INVERSION", 0);
         publishForPractice("HYPERBOLE", 0);
         UUID assignmentId = assignment("practice-alice");
         replaceDraftWithAttempt(assignmentId, alice.id(), attemptStatus);
 
-        mvc.perform(post("/api/practice/assignments")
-                        .with(user("practice-alice")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("PRACTICE_ASSIGNMENT_INCOMPLETE"));
+        UUID second = assignment("practice-alice");
+
+        assertThat(category(second)).isEqualTo("HYPERBOLE");
     }
 
     @Test

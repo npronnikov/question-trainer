@@ -22,9 +22,6 @@ public class PracticeAssignmentService {
     @Transactional
     public AssignmentView create(UUID ownerId) {
         practice.lockOwner(ownerId);
-        if (practice.hasUnfinishedAssignment(ownerId)) {
-            throw PracticeAssignmentUnavailableException.incomplete();
-        }
         List<String> categories = practice.categoryCodes();
         if (categories.isEmpty()) {
             throw PracticeAssignmentUnavailableException.exhausted();

@@ -36,20 +36,6 @@ public class PracticeRepository {
         return count == null ? 0L : count;
     }
 
-    public boolean hasUnfinishedAssignment(UUID ownerId) {
-        Integer count = jdbc.queryForObject("""
-                SELECT COUNT(*) FROM practice_assignment assignment
-                WHERE assignment.owner_id=?
-                  AND COALESCE((
-                    SELECT attempt.status FROM practice_attempt attempt
-                    WHERE attempt.assignment_id=assignment.id
-                    ORDER BY attempt.attempt_number DESC
-                    LIMIT 1
-                  ), 'DRAFT') <> 'PASSED'
-                """, Integer.class, ownerId);
-        return count != null && count > 0;
-    }
-
     public int deleteAllCycles() {
         Integer count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM practice_assignment", Integer.class);
