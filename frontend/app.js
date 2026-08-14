@@ -71,6 +71,11 @@
     return Array.from(String(value || '')).slice(0, limit).join('');
   }
 
+  function truncateText(value, limit) {
+    const characters = Array.from(String(value || ''));
+    return characters.length > limit ? `${characters.slice(0, limit).join('')}…` : characters.join('');
+  }
+
   async function api(path, options = {}) {
     return window.QH_API.request(`/api${path}`, options);
   }
@@ -640,7 +645,7 @@
       <div role="listitem">
         <button class="practice-cycle-row" type="button" data-practice-cycle="${escapeHtml(cycle.assignmentId)}">
           <span class="practice-cycle-meta"><span>${escapeHtml(cycle.targetCategory.name)}</span><span>${escapeHtml(practiceStatusLabel(cycle.status))}</span></span>
-          <strong>${escapeHtml(cycle.situation)}</strong>
+          <strong>${escapeHtml(truncateText(cycle.situation, 100))}</strong>
           <small>${escapeHtml(cycle.domain)} · ${escapeHtml(formatDate(cycle.updatedAt))}${cycle.attemptCount ? ` · попыток: ${cycle.attemptCount}` : ''}</small>
         </button>
       </div>`).join('');

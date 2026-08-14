@@ -213,6 +213,14 @@ test('practice hydrates server cycles and debounces owner draft persistence', as
   assert.match(app, /classList\.toggle\('is-practice'/);
 });
 
+test('practice cycle cards truncate long situations to 100 characters', async () => {
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+  const renderPracticeCycles = app.match(/function renderPracticeCycles\(\)[\s\S]*?function setPracticeAvailability/)?.[0] || '';
+
+  assert.match(app, /function truncateText\(value, limit\)/);
+  assert.match(renderPracticeCycles, /truncateText\(cycle\.situation, 100\)/);
+});
+
 test('practice locks submitted values and guards duplicate mutations', async () => {
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
 
