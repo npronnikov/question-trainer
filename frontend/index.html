@@ -245,9 +245,14 @@
               <button class="danger-button moderation-clear-button" id="clear-practice-cycles" type="button">Удалить циклы практики</button>
             </div>
           </header>
-          <div class="moderation-toolbar" role="group" aria-label="Фильтр очереди"><button class="is-active" data-moderation-status="PENDING_REVIEW">На проверке</button><button data-moderation-status="AUTO_REJECTED">Автоотказ</button><button data-moderation-status="REJECTED">Отклонено</button><button data-moderation-status="PUBLISHED">Опубликовано</button></div>
-          <p class="moderation-status" id="moderation-status" role="status"></p>
-          <div class="moderation-layout"><div class="candidate-list" id="candidate-list"></div><article class="candidate-detail" id="candidate-detail"><p>Выберите кандидат в очереди.</p></article></div>
+          <div class="moderation-layout">
+            <div class="candidate-list" id="candidate-list"></div>
+            <div class="candidate-workspace">
+              <div class="moderation-toolbar" role="group" aria-label="Фильтр очереди"><button class="is-active" data-moderation-status="PENDING_REVIEW">На проверке</button><button data-moderation-status="AUTO_REJECTED">Автоотказ</button><button data-moderation-status="REJECTED">Отклонено</button><button data-moderation-status="PUBLISHED">Опубликовано</button></div>
+              <p class="moderation-status" id="moderation-status" role="status"></p>
+              <article class="candidate-detail is-empty" id="candidate-detail"><p>Выберите кандидат в очереди.</p></article>
+            </div>
+          </div>
         </div>
       </section>
     </main>

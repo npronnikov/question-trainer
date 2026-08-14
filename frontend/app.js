@@ -1306,6 +1306,7 @@
 
   function renderCandidateDetail() {
     const panel = $('#candidate-detail');
+    panel.classList.toggle('is-empty', !selectedCandidate);
     if (!selectedCandidate) { panel.innerHTML = '<p>Выберите кандидат в очереди.</p>'; return; }
     const item = selectedCandidate;
     const editable = item.status === 'PENDING_REVIEW';
