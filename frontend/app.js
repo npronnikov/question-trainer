@@ -405,9 +405,34 @@
     }
   }
 
+  function requestResetTrainerProgress() {
+    $('#reset-trainer-dialog').showModal();
+  }
+
+  async function confirmResetTrainerProgress(event) {
+    event.preventDefault();
+    const button = $('#reset-trainer-confirm');
+    if (button.disabled) return;
+    setBusy(button, true, 'Сбрасываем…');
+    try {
+      await api('/progress', { method: 'DELETE' });
+      $('#reset-trainer-dialog').close();
+      await refreshProgressView();
+      await loadTrainerCard();
+      showToast('Прогресс тренажёра сброшен');
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setBusy(button, false, 'Сбросить прогресс');
+    }
+  }
+
   function bindTrainer() {
     $('#submit-trainer').addEventListener('click', submitTrainer);
     $('#refresh-progress').addEventListener('click', refreshProgressView);
+    $('#reset-trainer-progress').addEventListener('click', requestResetTrainerProgress);
+    $('#reset-trainer-form').addEventListener('submit', confirmResetTrainerProgress);
+    $('#reset-trainer-cancel').addEventListener('click', () => $('#reset-trainer-dialog').close());
     $('#difficulty-select').addEventListener('change', loadTrainerCard);
   }
 

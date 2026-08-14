@@ -112,6 +112,7 @@
                 <select id="difficulty-select"><option value="">Адаптивно</option><option value="L1">L1</option><option value="L2">L2</option><option value="L3">L3</option></select>
               </label>
               <button class="secondary-button" id="refresh-progress" type="button">Обновить прогресс</button>
+              <button class="secondary-button trainer-reset-button" id="reset-trainer-progress" type="button">Сбросить прогресс</button>
             </div>
           </div>
           <p class="trainer-recommendation" id="progress-recommendation" role="status">Загружаем рекомендацию…</p>
@@ -258,6 +259,7 @@
     </main>
 
     <dialog class="confirm-dialog" id="delete-session-dialog"><form method="dialog" id="delete-session-form"><p class="eyebrow">УДАЛЕНИЕ ДИАЛОГА</p><h2>Удалить диалог?</h2><p>Диалог <strong id="delete-dialog-name"></strong> будет удалён.</p><div class="confirm-dialog-actions"><button class="secondary-button" id="delete-session-cancel" type="button">Отмена</button><button class="danger-button" id="delete-session-confirm" type="submit">Удалить</button></div></form></dialog>
+    <dialog class="confirm-dialog" id="reset-trainer-dialog" aria-labelledby="reset-trainer-title"><form method="dialog" id="reset-trainer-form"><p class="eyebrow">СБРОС ПРОГРЕССА</p><h2 id="reset-trainer-title">Начать тренажёр заново?</h2><p>Ваши ответы, освоение категорий и история ошибок будут удалены без возможности восстановления.</p><div class="confirm-dialog-actions"><button class="secondary-button" id="reset-trainer-cancel" type="button">Отмена</button><button class="danger-button" id="reset-trainer-confirm" type="submit">Сбросить прогресс</button></div></form></dialog>
     <dialog class="confirm-dialog" id="clear-practice-dialog" aria-labelledby="clear-practice-title"><form method="dialog" id="clear-practice-form"><p class="eyebrow">ОЧИСТКА ПРАКТИКИ</p><h2 id="clear-practice-title">Удалить все циклы?</h2><p>Ответы, попытки, оценки и черновики <strong>всех пользователей</strong> будут удалены без возможности восстановления. Каталог ситуаций сохранится.</p><div class="confirm-dialog-actions"><button class="secondary-button" id="clear-practice-cancel" type="button">Отмена</button><button id="clear-practice-confirm" class="danger-button" type="submit">Удалить все циклы</button></div></form></dialog>
     <dialog class="confirm-dialog acp-status-dialog" id="acp-status-dialog" aria-labelledby="acp-dialog-title" aria-describedby="acp-dialog-reason">
       <form method="dialog">

@@ -201,6 +201,16 @@ test('selected trainer category marks its circle green', async () => {
   assert.match(css, /\.answer-option\.is-selected::before\s*\{[^}]*background:\s*#5bd37d;[^}]*border-color:\s*#5bd37d;/);
 });
 
+test('trainer progress reset is confirmed and delegated to the server', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(html, /id="reset-trainer-progress"/);
+  assert.match(html, /id="reset-trainer-dialog"[\s\S]*id="reset-trainer-form"/);
+  assert.match(app, /api\('\/progress',\s*\{ method: 'DELETE' \}\)/);
+  assert.match(app, /confirmResetTrainerProgress[\s\S]*refreshProgressView\(\)[\s\S]*loadTrainerCard\(\)/);
+});
+
 test('loading the next trainer card restores the front submit control', async () => {
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
 
@@ -340,7 +350,7 @@ test('practice omits the overview action and redundant labels', async () => {
 test('targeted moderation invalidates the offline shell cache', async () => {
   const serviceWorker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
 
-  assert.match(serviceWorker, /const CACHE = 'question-hacker-v16';/);
+  assert.match(serviceWorker, /const CACHE = 'question-hacker-v17';/);
 });
 
 test('boot activates the hash route before background API hydration', async () => {

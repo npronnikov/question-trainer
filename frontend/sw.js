@@ -1,4 +1,4 @@
-const CACHE = 'question-hacker-v16';
+const CACHE = 'question-hacker-v17';
 const OFFLINE = [
   './', './index.html', './styles.css', './api.js', './auth.js', './app.js', './manifest.webmanifest',
   './assets/icon.svg'

@@ -349,6 +349,13 @@ public class TrainerRepository {
                 rs.getObject("last_confused_at", OffsetDateTime.class)), ownerId);
     }
 
+    public void resetProgress(UUID ownerId) {
+        jdbc.update("DELETE FROM trainer_attempt WHERE owner_id=?", ownerId);
+        jdbc.update("DELETE FROM trainer_issuance WHERE owner_id=?", ownerId);
+        jdbc.update("DELETE FROM category_confusion WHERE owner_id=?", ownerId);
+        jdbc.update("DELETE FROM category_mastery WHERE owner_id=?", ownerId);
+    }
+
     private ScenarioRow scenarioRow(ResultSet rs, int ignored) throws SQLException {
         return new ScenarioRow(
                 rs.getObject("id", UUID.class), rs.getString("external_key"),

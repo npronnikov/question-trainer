@@ -31,6 +31,12 @@ public class ProgressService {
         return new ProgressView(categories, confusions, recommendation(categories, confusions));
     }
 
+    @Transactional
+    public ProgressView reset(UUID ownerId) {
+        trainer.resetProgress(ownerId);
+        return progress(ownerId);
+    }
+
     private CategoryProgress category(TrainerRepository.CategoryProgressRow row) {
         double accuracy = row.attempts() == 0
                 ? 0

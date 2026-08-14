@@ -276,6 +276,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visib
 .trainer-actions select { padding: 9px 12px; border: 1px solid var(--white-line); border-radius: 10px; background: #1a1b18; color: var(--paper); }
 .trainer-actions .secondary-button { color: var(--paper); border-color: var(--white-line); font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .09em; }
 .trainer-actions .secondary-button:hover { color: var(--ink); }
+.trainer-actions .trainer-reset-button { color: #ff8f7a; border-color: rgba(255,143,122,.42); }
 .trainer-model-picker { color: #8d8f87; }
 .trainer-model-picker select { color: var(--paper); border-color: var(--white-line); }
 .trainer-recommendation { max-width: 920px; margin: 0 auto 18px; color: #b8bab1; line-height: 1.5; }

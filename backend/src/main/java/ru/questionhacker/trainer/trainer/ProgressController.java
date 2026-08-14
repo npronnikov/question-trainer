@@ -1,5 +1,6 @@
 package ru.questionhacker.trainer.trainer;
 
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,5 +22,10 @@ public class ProgressController {
     @GetMapping
     public ProgressService.ProgressView progress() {
         return progress.progress(auth.requireCurrentUser().id());
+    }
+
+    @DeleteMapping
+    public ProgressService.ProgressView reset() {
+        return progress.reset(auth.requireCurrentUser().id());
     }
 }
