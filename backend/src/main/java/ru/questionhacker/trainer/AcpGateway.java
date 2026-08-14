@@ -8,8 +8,8 @@ import static com.agentclientprotocol.sdk.spec.AcpSchema.InitializeRequest;
 import static com.agentclientprotocol.sdk.spec.AcpSchema.NewSessionRequest;
 import static com.agentclientprotocol.sdk.spec.AcpSchema.PromptRequest;
 import static com.agentclientprotocol.sdk.spec.AcpSchema.ReadTextFileResponse;
-import static com.agentclientprotocol.sdk.spec.AcpSchema.TextContent;
 import static com.agentclientprotocol.sdk.spec.AcpSchema.SetSessionModelRequest;
+import static com.agentclientprotocol.sdk.spec.AcpSchema.TextContent;
 import static com.agentclientprotocol.sdk.spec.AcpSchema.WriteTextFileResponse;
 
 import java.util.List;
@@ -67,11 +67,11 @@ public class AcpGateway {
                     return new WriteTextFileResponse();
                 })
                 .sessionUpdateConsumer(notification -> {
-                    if (notification.update() instanceof AgentMessageChunk message
-                            && message.content() instanceof TextContent text
-                            && text.text() != null) {
-                        chunks.append(text.text());
-                        onChunk.accept(text.text());
+                    if (notification.update() instanceof AgentMessageChunk message) {
+                        AcpMessageFilter.visibleText(message).ifPresent(text -> {
+                            chunks.append(text);
+                            onChunk.accept(text);
+                        });
                     }
                 })
                 .build()) {
