@@ -50,6 +50,19 @@ public class PracticeRepository {
         return count != null && count > 0;
     }
 
+    public int deleteAllCycles() {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM practice_assignment", Integer.class);
+        jdbc.update("""
+                DELETE FROM practice_assessment
+                WHERE attempt_id IN (SELECT id FROM practice_attempt)
+                """);
+        jdbc.update("DELETE FROM practice_attempt");
+        jdbc.update("DELETE FROM practice_draft");
+        jdbc.update("DELETE FROM practice_assignment");
+        return count == null ? 0 : count;
+    }
+
     public Optional<AssignmentSource> selectAssignmentSource(UUID ownerId, String targetCategory) {
         return jdbc.query("""
                 SELECT s.id AS scenario_id, s.category_code, c.name,
