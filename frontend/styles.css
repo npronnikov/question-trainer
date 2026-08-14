@@ -303,7 +303,8 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visib
 .scenario-text { max-width: 740px; margin: 38px 0 22px; font-size: clamp(21px, 3vw, 31px); line-height: 1.35; letter-spacing: -.02em; }
 .answer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .answer-option { min-height: 58px; padding: 13px 16px; display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); background: transparent; border-radius: 14px; text-align: left; cursor: pointer; font-weight: 700; transition: background .16s ease, transform .16s ease; }
-.answer-option::before { content: attr(data-key); width: 28px; height: 28px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 50%; font: 10px var(--mono); }
+.answer-option::before { content: attr(data-key); width: 28px; height: 28px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 50%; font: 10px var(--mono); transition: background .16s ease, border-color .16s ease; }
+.answer-option.is-selected::before { background: #5bd37d; border-color: #5bd37d; }
 .answer-option:hover { background: white; transform: translateY(-1px); }
 .back-actions { display: flex; align-items: center; gap: 20px; }
 
@@ -344,10 +345,10 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visib
 .session-delete { width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; font-size: 20px; line-height: 1; opacity: .55; }
 .session-delete:hover, .session-delete:focus-visible { background: rgba(255,90,60,.18); color: #ff795d; opacity: 1; }
 .session-row.is-active .session-delete:hover, .session-row.is-active .session-delete:focus-visible { background: rgba(16,17,15,.13); color: #9d2514; }
-.session-rename-form { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) 30px 30px; gap: 2px; align-items: center; padding: 7px 4px 7px 8px; }
-.session-title-input { min-width: 0; width: 100%; padding: 7px 8px; border: 1px solid rgba(255,255,255,.25); border-radius: 7px; background: rgba(0,0,0,.18); color: inherit; font: 13px var(--sans); outline: none; }
-.session-title-input:focus { border-color: var(--acid); box-shadow: 0 0 0 2px rgba(215,255,62,.16); }
-.session-row.is-active .session-title-input { border-color: rgba(16,17,15,.3); background: rgba(255,255,255,.45); }
+.session-rename-form { display: contents; }
+.session-rename-fields { cursor: text; }
+.session-title-input { display: block; min-width: 0; width: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: 700 13px var(--sans); outline: none; }
+.session-title-input:focus, .session-title-input:focus-visible { outline: none; box-shadow: none; }
 .session-rename-save { font-size: 14px; }
 .session-rename-cancel { font-size: 18px; }
 .agent-card { width: 100%; margin-top: auto; padding: 17px; border: 1px solid var(--white-line); border-radius: 17px; background: rgba(255,255,255,.035); color: inherit; font: inherit; text-align: left; cursor: pointer; }

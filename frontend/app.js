@@ -1041,8 +1041,11 @@
       const active = session.id === currentSessionId ? 'is-active' : '';
       if (session.id === editingSessionId) {
         return `<div class="session-row is-editing ${active}"><form class="session-rename-form" data-rename-form="${session.id}">
-          <label class="visually-hidden" for="session-title-${session.id}">Название диалога</label>
-          <input class="session-title-input" id="session-title-${session.id}" maxlength="180" value="${escapeHtml(editingSessionValue)}" autocomplete="off">
+          <div class="session-item session-rename-fields">
+            <label class="visually-hidden" for="session-title-${session.id}">Название диалога</label>
+            <input class="session-title-input" id="session-title-${session.id}" maxlength="180" value="${escapeHtml(editingSessionValue)}" autocomplete="off">
+            <small>${formatDate(session.updatedAt)}</small>
+          </div>
           <button class="session-rename-save" type="submit" aria-label="Сохранить название">✓</button>
           <button class="session-rename-cancel" type="button" data-cancel-rename aria-label="Отменить переименование">×</button>
         </form></div>`;

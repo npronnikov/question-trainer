@@ -195,6 +195,12 @@ test('trainer feedback is the inert back face of one flippable card', async () =
   assert.match(css, /prefers-reduced-motion:\s*reduce[\s\S]*\.trainer-card-inner/);
 });
 
+test('selected trainer category marks its circle green', async () => {
+  const css = await fs.readFile(new URL('styles.css', frontend), 'utf8');
+
+  assert.match(css, /\.answer-option\.is-selected::before\s*\{[^}]*background:\s*#5bd37d;[^}]*border-color:\s*#5bd37d;/);
+});
+
 test('loading the next trainer card restores the front submit control', async () => {
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
 
@@ -312,9 +318,11 @@ test('coach dialogs are renamed inline through the server', async () => {
   assert.match(app, /event\.key === 'Escape'/);
   assert.match(app, /addEventListener\('blur'/);
   assert.match(app, /renameSubmitting/);
+  assert.match(app, /class="session-item session-rename-fields"[\s\S]*class="session-title-input"[\s\S]*<small>/);
   assert.doesNotMatch(app, /slice\(0,\s*30\)|substring\(0,\s*30\)/);
   assert.match(css, /\.session-rename/);
   assert.match(css, /\.session-title-input/);
+  assert.match(css, /\.session-rename-form\s*\{[^}]*display:\s*contents;/);
 });
 
 test('practice omits the overview action and redundant labels', async () => {
