@@ -1199,23 +1199,32 @@
   function consumeChatRun(runId, streamId) {
     const source = new EventSource(`/api/chat/runs/${runId}/events`);
     activeStream = source;
-    let markdown = '';
-    source.addEventListener('delta', event => {
-      markdown += JSON.parse(event.data).text || '';
-      $(`#${streamId} .message-body`).innerHTML = renderMarkdown(markdown);
+    const stream = window.QH_COACH_STREAM.createCoachStream({
+      render: markdown => {
+        const body = $(`#${streamId} .message-body`);
+        if (body) body.innerHTML = renderMarkdown(markdown);
+      }
+    });
+    source.addEventListener('snapshot', event => {
+      stream.accept(JSON.parse(event.data));
     });
     source.addEventListener('done', event => {
+      const payload = JSON.parse(event.data);
       source.close(); activeStream = null;
-      finishChat(streamId, markdown, JSON.parse(event.data).source || 'ACP');
+      stream.finish(payload);
+      finishChat(streamId, stream.text(), payload.source || 'ACP');
       reloadSessions(currentSessionId).catch(() => {});
     });
     source.addEventListener('failure', event => {
       source.close(); activeStream = null;
+      stream.dispose();
       finishChat(streamId, `## Агент недоступен\n\n${JSON.parse(event.data).message || 'Неизвестная ошибка'}`, 'ERROR');
     });
     source.onerror = () => {
       if (source.readyState === EventSource.CLOSED) return;
       source.close(); activeStream = null;
+      const markdown = stream.text();
+      stream.dispose();
       finishChat(streamId, markdown || '## Поток прерван', 'INTERRUPTED');
     };
   }

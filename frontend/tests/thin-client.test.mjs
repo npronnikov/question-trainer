@@ -335,6 +335,19 @@ test('coach dialogs are renamed inline through the server', async () => {
   assert.match(css, /\.session-rename-form\s*\{[^}]*display:\s*contents;/);
 });
 
+test('coach stream replaces versioned snapshots through a dedicated state machine', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+  const worker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
+
+  assert.ok(html.indexOf('<script src="coach-stream.js"></script>') > -1);
+  assert.ok(html.indexOf('<script src="coach-stream.js"></script>') < html.indexOf('<script src="app.js"></script>'));
+  assert.match(app, /QH_COACH_STREAM\.createCoachStream/);
+  assert.match(app, /addEventListener\('snapshot'/);
+  assert.doesNotMatch(app, /addEventListener\('delta'/);
+  assert.match(worker, /\.\/coach-stream\.js/);
+});
+
 test('practice omits the overview action and redundant labels', async () => {
   const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
@@ -350,7 +363,7 @@ test('practice omits the overview action and redundant labels', async () => {
 test('targeted moderation invalidates the offline shell cache', async () => {
   const serviceWorker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
 
-  assert.match(serviceWorker, /const CACHE = 'question-hacker-v17';/);
+  assert.match(serviceWorker, /const CACHE = 'question-hacker-v18';/);
 });
 
 test('boot activates the hash route before background API hydration', async () => {
