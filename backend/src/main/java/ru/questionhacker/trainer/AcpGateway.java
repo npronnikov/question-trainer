@@ -19,23 +19,22 @@ import com.agentclientprotocol.sdk.client.AcpClient;
 import com.agentclientprotocol.sdk.client.AcpSyncClient;
 import com.agentclientprotocol.sdk.client.transport.AgentParameters;
 import com.agentclientprotocol.sdk.client.transport.StdioAcpClientTransport;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
 public class AcpGateway {
 
-    private static final Logger log = LoggerFactory.getLogger(AcpGateway.class);
-
     private final AppProperties properties;
     private final WorkspaceAccess workspace;
     private final AcpAvailability availability;
+    private final AcpInteractionLogger interactionLogger;
 
-    public AcpGateway(AppProperties properties, WorkspaceAccess workspace, AcpAvailability availability) {
+    public AcpGateway(AppProperties properties, WorkspaceAccess workspace,
+                      AcpAvailability availability, AcpInteractionLogger interactionLogger) {
         this.properties = properties;
         this.workspace = workspace;
         this.availability = availability;
+        this.interactionLogger = interactionLogger;
     }
 
     public String ask(String prompt, String model, Consumer<String> onChunk) {
@@ -57,6 +56,7 @@ public class AcpGateway {
         addEnvIfPresent(builder, "NO_BROWSER");
         builder.addEnvVar("INITIAL_AGENT_MODE", System.getenv().getOrDefault("INITIAL_AGENT_MODE", "read-only"));
         var transport = new StdioAcpClientTransport(builder.build());
+        var interaction = interactionLogger.begin(prompt, model);
 
         try (AcpSyncClient client = AcpClient.sync(transport)
                 .requestTimeout(properties.acp().timeout())
@@ -85,18 +85,21 @@ public class AcpGateway {
             }
             client.prompt(new PromptRequest(session.sessionId(), List.of(new TextContent(prompt))));
         } catch (RuntimeException error) {
-            log.warn("ACP agent failed: {}", error.toString());
+            interactionLogger.failure(interaction, error);
             availability.recordFailure(error);
             throw error;
         }
 
         if (chunks.isEmpty()) {
             var error = new IllegalStateException("ACP-агент завершил ход без текстового ответа");
+            interactionLogger.failure(interaction, error);
             availability.recordFailure(error);
             throw error;
         }
+        String response = chunks.toString();
+        interactionLogger.success(interaction, response);
         availability.recordSuccess();
-        return chunks.toString();
+        return response;
     }
 
     private boolean hasApiKey() {
