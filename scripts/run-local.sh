@@ -51,12 +51,92 @@ export ACP_AGENT_ARGS="${ACP_AGENT_ARGS:--y,@agentclientprotocol/codex-acp}"
 export CODEX_PATH
 export INITIAL_AGENT_MODE="${INITIAL_AGENT_MODE:-read-only}"
 export SERVER_PORT="${SERVER_PORT:-8081}"
+export FRONTEND_PORT="${FRONTEND_PORT:-8090}"
 export BACKEND_URL="${BACKEND_URL:-http://localhost:$SERVER_PORT}"
+
+validate_port() {
+  local name="$1"
+  local value="$2"
+
+  if [[ ! "$value" =~ ^[1-9][0-9]{0,4}$ ]] || (( value > 65535 )); then
+    echo "$name должен быть целым числом от 1 до 65535: $value" >&2
+    exit 1
+  fi
+}
+
+validate_port SERVER_PORT "$SERVER_PORT"
+validate_port FRONTEND_PORT "$FRONTEND_PORT"
+
+if [[ "$SERVER_PORT" == "$FRONTEND_PORT" ]]; then
+  echo "SERVER_PORT и FRONTEND_PORT должны отличаться: $SERVER_PORT" >&2
+  exit 1
+fi
 
 echo "Локальный Codex: $CODEX_PATH"
 if [[ "$check_config" == true ]]; then
   exit 0
 fi
+
+if ! command -v lsof >/dev/null 2>&1; then
+  echo "Для освобождения портов требуется утилита lsof" >&2
+  exit 1
+fi
+
+listeners_on_port() {
+  lsof -nP -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null || true
+}
+
+signal_listeners() {
+  local signal="$1"
+  local pids="$2"
+  local pid
+
+  for pid in $pids; do
+    if [[ "$pid" =~ ^[0-9]+$ ]]; then
+      kill -"$signal" "$pid" 2>/dev/null || true
+    fi
+  done
+}
+
+stop_listeners_on_port() {
+  local port="$1"
+  local pids
+  local remaining
+  local attempt
+
+  pids="$(listeners_on_port "$port")"
+  if [[ -z "$pids" ]]; then
+    return
+  fi
+
+  echo "Освобождаем порт $port (PID: ${pids//$'\n'/, })…"
+  signal_listeners TERM "$pids"
+
+  for (( attempt = 0; attempt < 50; attempt++ )); do
+    remaining="$(listeners_on_port "$port")"
+    if [[ -z "$remaining" ]]; then
+      return
+    fi
+    sleep 0.1
+  done
+
+  echo "Процессы на порту $port не завершились по TERM, отправляем KILL…"
+  signal_listeners KILL "$remaining"
+
+  for (( attempt = 0; attempt < 20; attempt++ )); do
+    remaining="$(listeners_on_port "$port")"
+    if [[ -z "$remaining" ]]; then
+      return
+    fi
+    sleep 0.1
+  done
+
+  echo "Не удалось освободить порт $port (PID: ${remaining//$'\n'/, })" >&2
+  return 1
+}
+
+stop_listeners_on_port "$SERVER_PORT"
+stop_listeners_on_port "$FRONTEND_PORT"
 
 backend_pid=""
 frontend_pid=""
@@ -87,7 +167,7 @@ node "$project_dir/scripts/dev-server.mjs" &
 frontend_pid=$!
 
 echo "Backend: $BACKEND_URL"
-echo "Приложение: http://localhost:${FRONTEND_PORT:-8090}"
+echo "Приложение: http://localhost:$FRONTEND_PORT"
 echo "Для остановки нажмите Ctrl+C"
 
 while kill -0 "$backend_pid" 2>/dev/null && kill -0 "$frontend_pid" 2>/dev/null; do
