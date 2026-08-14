@@ -1,6 +1,5 @@
 package ru.questionhacker.trainer;
 
-import static com.agentclientprotocol.sdk.spec.AcpSchema.AgentMessageChunk;
 import static com.agentclientprotocol.sdk.spec.AcpSchema.AuthenticateRequest;
 import static com.agentclientprotocol.sdk.spec.AcpSchema.ClientCapabilities;
 import static com.agentclientprotocol.sdk.spec.AcpSchema.FileSystemCapability;
@@ -51,7 +50,7 @@ public class AcpGateway {
             }
         }
 
-        var chunks = new StringBuilder();
+        var responseCollector = new AcpResponseCollector(onChunk);
         var capabilities = new ClientCapabilities(new FileSystemCapability(true, true), false);
         addEnvIfPresent(builder, "NO_BROWSER");
         builder.addEnvVar("INITIAL_AGENT_MODE", System.getenv().getOrDefault("INITIAL_AGENT_MODE", "read-only"));
@@ -66,14 +65,7 @@ public class AcpGateway {
                     workspace.write(request.path(), request.content());
                     return new WriteTextFileResponse();
                 })
-                .sessionUpdateConsumer(notification -> {
-                    if (notification.update() instanceof AgentMessageChunk message) {
-                        AcpMessageFilter.visibleText(message).ifPresent(text -> {
-                            chunks.append(text);
-                            onChunk.accept(text);
-                        });
-                    }
-                })
+                .sessionUpdateConsumer(responseCollector)
                 .build()) {
             var initialization = client.initialize(new InitializeRequest(1, capabilities));
             if (hasApiKey() && initialization.authMethods() != null && !initialization.authMethods().isEmpty()) {
@@ -90,13 +82,13 @@ public class AcpGateway {
             throw error;
         }
 
-        if (chunks.isEmpty()) {
+        if (responseCollector.isEmpty()) {
             var error = new IllegalStateException("ACP-агент завершил ход без текстового ответа");
             interactionLogger.failure(interaction, error);
             availability.recordFailure(error);
             throw error;
         }
-        String response = chunks.toString();
+        String response = responseCollector.text();
         interactionLogger.success(interaction, response);
         availability.recordSuccess();
         return response;

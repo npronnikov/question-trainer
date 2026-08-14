@@ -27,12 +27,27 @@ class AcpMessageFilterTest {
     }
 
     @Test
-    void keepsUnphasedAndUnknownAgentMessagesForCompatibility() {
+    void keepsUnphasedAgentMessagesForCompatibility() {
         assertThat(AcpMessageFilter.visibleText(message("обычный ответ", null)))
                 .contains("обычный ответ");
+    }
+
+    @Test
+    void keepsUnknownPhasesForCompatibility() {
         assertThat(AcpMessageFilter.visibleText(message("новая фаза", Map.of(
                 "codex", Map.of("phase", "future_phase")))))
                 .contains("новая фаза");
+    }
+
+    @Test
+    void ignoresMissingTextAndAcceptsMalformedCodexMetadata() {
+        var missingText = new AgentMessageChunk(
+                "agent_message_chunk", null, "message-id", Map.of());
+
+        assertThat(AcpMessageFilter.visibleText(missingText)).isEmpty();
+        assertThat(AcpMessageFilter.visibleText(message(
+                "совместимый ответ", Map.of("codex", "unexpected"))))
+                .contains("совместимый ответ");
     }
 
     private AgentMessageChunk message(String text, Map<String, Object> meta) {

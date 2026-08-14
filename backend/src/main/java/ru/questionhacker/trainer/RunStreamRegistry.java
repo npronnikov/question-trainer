@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.LongFunction;
 
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
@@ -20,6 +21,15 @@ public class RunStreamRegistry {
 
     private static final long SSE_TIMEOUT = Duration.ofMinutes(8).toMillis();
     private final Map<UUID, StreamState> streams = new ConcurrentHashMap<>();
+    private final LongFunction<SseEmitter> emitterFactory;
+
+    public RunStreamRegistry() {
+        this(SseEmitter::new);
+    }
+
+    RunStreamRegistry(LongFunction<SseEmitter> emitterFactory) {
+        this.emitterFactory = emitterFactory;
+    }
 
     public UUID create(UUID ownerId) {
         var id = UUID.randomUUID();
@@ -28,15 +38,20 @@ public class RunStreamRegistry {
     }
 
     public SseEmitter subscribe(UUID ownerId, UUID runId) {
+        return subscribe(ownerId, runId, () -> { });
+    }
+
+    SseEmitter subscribe(UUID ownerId, UUID runId, Runnable beforeHandoff) {
         var state = streams.get(runId);
         if (state == null || !state.ownerId.equals(ownerId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Запуск не найден");
         }
-        var emitter = new SseEmitter(SSE_TIMEOUT);
+        var emitter = emitterFactory.apply(SSE_TIMEOUT);
         emitter.onCompletion(() -> state.emitters.remove(emitter));
         emitter.onTimeout(() -> state.emitters.remove(emitter));
         emitter.onError(error -> state.emitters.remove(emitter));
 
+        beforeHandoff.run();
         synchronized (state) {
             state.backlog.forEach(event -> send(emitter, event));
             if (state.completed) {
