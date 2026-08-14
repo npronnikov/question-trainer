@@ -33,7 +33,6 @@ public class RunStreamRegistry {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Запуск не найден");
         }
         var emitter = new SseEmitter(SSE_TIMEOUT);
-        state.emitters.add(emitter);
         emitter.onCompletion(() -> state.emitters.remove(emitter));
         emitter.onTimeout(() -> state.emitters.remove(emitter));
         emitter.onError(error -> state.emitters.remove(emitter));
@@ -43,6 +42,8 @@ public class RunStreamRegistry {
             if (state.completed) {
                 send(emitter, state.terminalEvent);
                 emitter.complete();
+            } else {
+                state.emitters.add(emitter);
             }
         }
         return emitter;
