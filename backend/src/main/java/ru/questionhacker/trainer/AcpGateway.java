@@ -20,11 +20,15 @@ import com.agentclientprotocol.sdk.client.AcpClient;
 import com.agentclientprotocol.sdk.client.AcpAsyncClient;
 import com.agentclientprotocol.sdk.client.transport.AgentParameters;
 import com.agentclientprotocol.sdk.client.transport.StdioAcpClientTransport;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 @Component
 public class AcpGateway {
+
+    private static final Logger log = LoggerFactory.getLogger(AcpGateway.class);
 
     private final AppProperties properties;
     private final WorkspaceAccess workspace;
@@ -122,11 +126,16 @@ public class AcpGateway {
         }
     }
 
-    private void close(AcpAsyncClient client) {
+    static void close(AcpAsyncClient client) {
         try {
             client.closeGracefully().block(Duration.ofSeconds(10));
-        } finally {
+        } catch (RuntimeException error) {
+            log.warn("ACP client graceful close failed", error);
+        }
+        try {
             client.close();
+        } catch (RuntimeException error) {
+            log.warn("ACP client forced close failed", error);
         }
     }
 
