@@ -11,14 +11,17 @@ import static com.agentclientprotocol.sdk.spec.AcpSchema.SetSessionModelRequest;
 import static com.agentclientprotocol.sdk.spec.AcpSchema.TextContent;
 import static com.agentclientprotocol.sdk.spec.AcpSchema.WriteTextFileResponse;
 
+import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 import com.agentclientprotocol.sdk.client.AcpClient;
-import com.agentclientprotocol.sdk.client.AcpSyncClient;
+import com.agentclientprotocol.sdk.client.AcpAsyncClient;
 import com.agentclientprotocol.sdk.client.transport.AgentParameters;
 import com.agentclientprotocol.sdk.client.transport.StdioAcpClientTransport;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
 
 @Component
 public class AcpGateway {
@@ -57,29 +60,38 @@ public class AcpGateway {
         var transport = new StdioAcpClientTransport(builder.build());
         var interaction = interactionLogger.begin(prompt, model);
 
-        try (AcpSyncClient client = AcpClient.sync(transport)
+        AcpAsyncClient client = AcpClient.async(transport)
                 .requestTimeout(properties.acp().timeout())
                 .clientCapabilities(capabilities)
-                .readTextFileHandler(request -> new ReadTextFileResponse(workspace.read(request.path())))
-                .writeTextFileHandler(request -> {
+                .readTextFileHandler(request -> Mono.fromSupplier(
+                        () -> new ReadTextFileResponse(workspace.read(request.path()))))
+                .writeTextFileHandler(request -> Mono.fromSupplier(() -> {
                     workspace.write(request.path(), request.content());
                     return new WriteTextFileResponse();
-                })
-                .sessionUpdateConsumer(responseCollector)
-                .build()) {
-            var initialization = client.initialize(new InitializeRequest(1, capabilities));
+                }))
+                .sessionUpdateConsumer(notification -> Mono.fromRunnable(
+                        () -> responseCollector.accept(notification)))
+                .build();
+        try {
+            var initialization = Objects.requireNonNull(
+                    client.initialize(new InitializeRequest(1, capabilities)).block(),
+                    "ACP-агент не вернул результат инициализации");
             if (hasApiKey() && initialization.authMethods() != null && !initialization.authMethods().isEmpty()) {
-                client.authenticate(new AuthenticateRequest("api-key"));
+                client.authenticate(new AuthenticateRequest("api-key")).block();
             }
-            var session = client.newSession(new NewSessionRequest(workspace.root().toString(), List.of()));
+            var session = Objects.requireNonNull(
+                    client.newSession(new NewSessionRequest(workspace.root().toString(), List.of())).block(),
+                    "ACP-агент не создал сессию");
             if (model != null && !model.isBlank()) {
-                client.setSessionModel(new SetSessionModelRequest(session.sessionId(), model));
+                client.setSessionModel(new SetSessionModelRequest(session.sessionId(), model)).block();
             }
-            client.prompt(new PromptRequest(session.sessionId(), List.of(new TextContent(prompt))));
+            client.prompt(new PromptRequest(session.sessionId(), List.of(new TextContent(prompt)))).block();
         } catch (RuntimeException error) {
             interactionLogger.failure(interaction, error);
             availability.recordFailure(error);
             throw error;
+        } finally {
+            close(client);
         }
 
         if (responseCollector.isEmpty()) {
@@ -107,6 +119,14 @@ public class AcpGateway {
         String value = System.getenv(name);
         if (value != null && !value.isBlank()) {
             builder.addEnvVar(name, value);
+        }
+    }
+
+    private void close(AcpAsyncClient client) {
+        try {
+            client.closeGracefully().block(Duration.ofSeconds(10));
+        } finally {
+            client.close();
         }
     }
 

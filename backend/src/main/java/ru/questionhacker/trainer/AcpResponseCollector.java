@@ -7,11 +7,11 @@ import java.util.function.Consumer;
 
 final class AcpResponseCollector implements Consumer<SessionNotification> {
 
-    private final Consumer<String> onChunk;
+    private final Consumer<String> onSnapshot;
     private final StringBuilder chunks = new StringBuilder();
 
-    AcpResponseCollector(Consumer<String> onChunk) {
-        this.onChunk = onChunk;
+    AcpResponseCollector(Consumer<String> onSnapshot) {
+        this.onSnapshot = onSnapshot;
     }
 
     @Override
@@ -19,7 +19,7 @@ final class AcpResponseCollector implements Consumer<SessionNotification> {
         if (notification.update() instanceof AgentMessageChunk message) {
             AcpMessageFilter.visibleText(message).ifPresent(text -> {
                 chunks.append(text);
-                onChunk.accept(text);
+                onSnapshot.accept(chunks.toString());
             });
         }
     }
