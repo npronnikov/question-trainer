@@ -452,6 +452,10 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
 .practice-attempt-model strong { display: block; margin-bottom: 7px; color: #6558b7; font: 9px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
 .practice-attempt-model p { margin: 0; font-size: 13px; line-height: 1.55; }
 .practice-form { display: grid; gap: 18px; margin-top: 24px; }
+.practice-revision-intro { padding: 20px 22px; border: 1px solid #e5a17f; border-radius: 18px; background: #ffe1d3; }
+.practice-revision-intro > span { display: block; color: #9b392f; font: 800 9px var(--mono); text-transform: uppercase; letter-spacing: .1em; }
+.practice-revision-intro h3 { margin: 8px 0 6px; font-size: 24px; letter-spacing: -.03em; }
+.practice-revision-intro p { margin: 0; color: #6f4b3c; font-size: 13px; line-height: 1.5; }
 .practice-form label > span { display: block; margin: 0 0 8px; font: 10px var(--mono); text-transform: uppercase; letter-spacing: .1em; }
 .practice-form textarea { width: 100%; padding: 17px 18px; resize: vertical; border: 1px solid var(--line); border-radius: 16px; outline: 0; background: #f8f7f1; color: var(--ink); font-size: 16px; line-height: 1.5; }
 .practice-form textarea:disabled { color: #77786f; background: #dfddd2; cursor: not-allowed; }
@@ -487,6 +491,7 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
 .moderation-generate { max-width: 720px; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 12px; }
 .moderation-model-picker { align-self: center; }
 .moderation-generation-button { white-space: nowrap; }
+.moderation-clear-button { white-space: nowrap; font-size: 11px; }
 .moderation-toolbar { display: flex; gap: 4px; margin-top: 48px; padding: 5px; width: max-content; max-width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); }
 .moderation-toolbar button { padding: 10px 15px; border: 0; border-radius: 999px; background: transparent; white-space: nowrap; cursor: pointer; font-weight: 700; }
 .moderation-toolbar button.is-active { background: var(--ink); color: var(--acid); }

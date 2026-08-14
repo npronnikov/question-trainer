@@ -200,7 +200,13 @@
                   </div>
                 </div>
                 <section class="practice-timeline" id="practice-timeline" aria-label="История попыток"></section>
+                <article class="practice-feedback is-hidden" id="practice-feedback" role="status" aria-live="polite" tabindex="-1"></article>
                 <form class="practice-form" id="practice-form" novalidate>
+                  <div class="practice-revision-intro" id="practice-revision-intro" hidden>
+                    <span>ИСПРАВЛЕНИЕ</span>
+                    <h3 id="practice-revision-title"></h3>
+                    <p id="practice-revision-fields"></p>
+                  </div>
                   <label for="practice-question"><span>1. Вопрос</span></label><textarea id="practice-question" rows="3" maxlength="1800" required placeholder="Какой вопрос изменит исходную рамку?"></textarea>
                   <label for="practice-answer"><span>2. Ответ</span></label><textarea id="practice-answer" rows="3" maxlength="3000" required placeholder="Дайте прямой ответ на свой вопрос"></textarea>
                   <label for="practice-reasoning"><span>3. Рассуждение</span></label><textarea id="practice-reasoning" rows="4" maxlength="5000" required placeholder="Что следует из вопроса и ответа? Покажите цепочку вывода"></textarea>
@@ -208,7 +214,6 @@
                   <p class="form-error" id="practice-error" role="alert"></p>
                   <div class="practice-submit-row"><span class="practice-form-state"><small id="practice-attempt">Попытка 1</small><small id="practice-save-status" aria-live="polite">Черновик на сервере</small></span><button class="primary-button" id="submit-practice" type="submit">Отправить на оценку <span>→</span></button></div>
                 </form>
-                <article class="practice-feedback is-hidden" id="practice-feedback" role="status" aria-live="polite" tabindex="-1"></article>
               </article>
             </div>
 
@@ -235,6 +240,7 @@
               </div>
               <button class="secondary-button moderation-generation-button" data-generation-target="PRACTICE" type="button">Для практики</button>
               <button class="primary-button moderation-generation-button" data-generation-target="TRAINER" type="button">Для тренажёра <span>→</span></button>
+              <button class="danger-button moderation-clear-button" id="clear-practice-cycles" type="button">Удалить циклы практики</button>
             </div>
           </header>
           <div class="moderation-toolbar" role="group" aria-label="Фильтр очереди"><button class="is-active" data-moderation-status="PENDING_REVIEW">На проверке</button><button data-moderation-status="AUTO_REJECTED">Автоотказ</button><button data-moderation-status="REJECTED">Отклонено</button><button data-moderation-status="PUBLISHED">Опубликовано</button></div>
@@ -245,6 +251,7 @@
     </main>
 
     <dialog class="confirm-dialog" id="delete-session-dialog"><form method="dialog" id="delete-session-form"><p class="eyebrow">УДАЛЕНИЕ ДИАЛОГА</p><h2>Удалить диалог?</h2><p>Диалог <strong id="delete-dialog-name"></strong> будет удалён.</p><div class="confirm-dialog-actions"><button class="secondary-button" id="delete-session-cancel" type="button">Отмена</button><button class="danger-button" id="delete-session-confirm" type="submit">Удалить</button></div></form></dialog>
+    <dialog class="confirm-dialog" id="clear-practice-dialog" aria-labelledby="clear-practice-title"><form method="dialog" id="clear-practice-form"><p class="eyebrow">ОЧИСТКА ПРАКТИКИ</p><h2 id="clear-practice-title">Удалить все циклы?</h2><p>Ответы, попытки, оценки и черновики <strong>всех пользователей</strong> будут удалены без возможности восстановления. Каталог ситуаций сохранится.</p><div class="confirm-dialog-actions"><button class="secondary-button" id="clear-practice-cancel" type="button">Отмена</button><button id="clear-practice-confirm" class="danger-button" type="submit">Удалить все циклы</button></div></form></dialog>
     <dialog class="confirm-dialog acp-status-dialog" id="acp-status-dialog" aria-labelledby="acp-dialog-title" aria-describedby="acp-dialog-reason">
       <form method="dialog">
         <span class="confirm-dialog-mark" aria-hidden="true">?</span>

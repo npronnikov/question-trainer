@@ -4,7 +4,6 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const TERMINAL_ATTEMPT_STATUSES = new Set(['PASSED', 'NEEDS_REVISION', 'UNVERIFIED']);
-  const PRACTICE_ASSIGNMENT_INCOMPLETE = 'PRACTICE_ASSIGNMENT_INCOMPLETE';
   const PRACTICE_CATALOG_EXHAUSTED = 'PRACTICE_CATALOG_EXHAUSTED';
   const PRACTICE_EXHAUSTED_MESSAGE = 'Вы прошли все доступные ситуации. Дождитесь, пока администратор добавит новые.';
   const FIELD_LABELS = { question: 'Вопрос', answer: 'Ответ', reasoning: 'Рассуждение', solution: 'Решение' };
@@ -53,7 +52,6 @@
   let practiceDraftDirty = false;
   let practiceEditorBaseAttemptId = null;
   let practiceSubmitting = false;
-  let practiceAvailabilityCode = null;
   let moderationStatus = 'PENDING_REVIEW';
   let moderationRows = [];
   let selectedCandidate = null;
@@ -658,26 +656,16 @@
   }
 
   function setPracticeAvailability(code, message = '') {
-    practiceAvailabilityCode = code;
     const region = $('#practice-availability');
     region.dataset.code = code || '';
     region.textContent = message;
   }
 
   function syncPracticeAvailability() {
-    const unfinished = practiceCycles.find(cycle => cycle.status !== 'PASSED');
-    if (unfinished) {
-      setPracticeAvailability(
-        PRACTICE_ASSIGNMENT_INCOMPLETE,
-        'Сначала завершите текущую ситуацию и получите зачёт.'
-      );
-    } else if (practiceAvailabilityCode === PRACTICE_ASSIGNMENT_INCOMPLETE) {
-      setPracticeAvailability(null);
-    }
     [$('#start-practice'), $('#new-practice')].forEach(button => {
       if (!button) return;
-      button.disabled = practiceSubmitting || Boolean(unfinished);
-      button.title = unfinished ? 'Сначала завершите текущую ситуацию и получите зачёт.' : '';
+      button.disabled = practiceSubmitting;
+      button.title = '';
     });
   }
 
@@ -717,10 +705,7 @@
       $('#practice-question').focus();
     } catch (error) {
       const code = error.problem?.code;
-      if (code === PRACTICE_ASSIGNMENT_INCOMPLETE) {
-        setPracticeAvailability(code, error.message);
-        await loadPracticeCycles();
-      } else if (code === PRACTICE_CATALOG_EXHAUSTED) {
+      if (code === PRACTICE_CATALOG_EXHAUSTED) {
         const message = error.message || PRACTICE_EXHAUSTED_MESSAGE;
         setPracticeAvailability(code, message);
         showToast(message);
@@ -979,7 +964,7 @@
       <p>${escapeHtml(assessment.feedback)}</p>
       ${assessment.strengths?.length ? `<div class="feedback-next"><strong>Что уже хорошо</strong><span>${assessment.strengths.map(escapeHtml).join(' · ')}</span></div>` : ''}
       ${!passed && !unverified ? `<div class="feedback-next"><strong>Приоритетная правка</strong><span>${escapeHtml(assessment.priorityCorrection.what)} — ${escapeHtml(assessment.priorityCorrection.why)}<br><em>${escapeHtml(assessment.priorityCorrection.example)}</em></span></div>` : ''}
-      <div class="back-actions">${passed ? '<button class="primary-button" id="practice-next" type="button">Следующая ситуация <span>→</span></button>' : unverified ? '<button class="secondary-button" id="practice-retry" type="button">Проверить позже</button>' : '<button class="primary-button" id="practice-revise" type="button">Исправить отмеченное <span>→</span></button>'}</div>`;
+      <div class="back-actions">${passed ? '<button class="primary-button" id="practice-next" type="button">Следующая ситуация <span>→</span></button>' : unverified ? '<button class="secondary-button" id="practice-retry" type="button">Проверить позже</button>' : '<button class="primary-button" id="practice-revise" type="button">Перейти к исправлению <span>→</span></button>'}</div>`;
     setBusy($('#submit-practice'), false, passed ? 'Зачтено' : 'Отправить исправление →');
     $('#submit-practice').disabled = passed || unverified;
     if (passed) $('#practice-next').addEventListener('click', startPractice);
@@ -996,18 +981,27 @@
   }
 
   function setRevisionFields(fields, locked = false) {
-    const revision = !locked && fields.length > 0 && fields.length < Object.keys(FIELD_LABELS).length;
+    const revision = !locked && practiceAttempt?.status === 'NEEDS_REVISION' && fields.length > 0;
+    const form = $('#practice-form');
+    const intro = $('#practice-revision-intro');
+    intro.hidden = !revision;
+    form.classList.toggle('is-revision', revision);
+    if (revision) {
+      $('#practice-revision-title').textContent = `Исправление попытки ${practiceAttempt.attemptNumber}`;
+      $('#practice-revision-fields').textContent = `Измените: ${fields.map(field => FIELD_LABELS[field] || field).join(', ')}.`;
+      setBusy($('#submit-practice'), false, 'Отправить исправление →');
+    }
     Object.keys(FIELD_LABELS).forEach(field => {
       const input = $(`#practice-${field}`);
       const editable = !locked && (!revision || fields.includes(field));
       input.disabled = !editable;
-      input.closest('.practice-form')?.classList.toggle('is-revision', revision);
       input.classList.toggle('needs-revision', revision && editable);
     });
   }
 
   function focusFirstRevision(fields) {
-    if (fields[0]) $(`#practice-${fields[0]}`)?.focus();
+    $('#practice-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (fields[0]) $(`#practice-${fields[0]}`)?.focus({ preventScroll: true });
   }
 
   function updatePracticeProgress(evaluating = false, passed = false) {
@@ -1238,6 +1232,48 @@
     $('#delete-session-cancel').addEventListener('click', () => { pendingDeleteSession = null; $('#delete-session-dialog').close(); });
   }
 
+  function requestClearPracticeCycles() {
+    $('#clear-practice-dialog').showModal();
+  }
+
+  function resetPracticeAfterAdminClear() {
+    clearAttemptPoll();
+    window.clearTimeout(practiceDraftTimer);
+    practiceLoadSequence += 1;
+    practiceAssignment = null;
+    practiceAttempt = null;
+    practiceCycles = [];
+    practiceInitialized = false;
+    practiceDraftTimer = null;
+    practiceDraftPromise = null;
+    practiceDraftDirty = false;
+    practiceEditorBaseAttemptId = null;
+    practiceSubmitting = false;
+    $('#practice-cycle-list').innerHTML = '';
+    $('#practice-workspace').classList.add('is-hidden');
+    $('#practice-empty').classList.remove('is-hidden');
+    $('#practice-feedback').classList.add('is-hidden');
+    setPracticeAvailability(null);
+    syncPracticeAvailability();
+  }
+
+  async function confirmClearPracticeCycles(event) {
+    event.preventDefault();
+    const button = $('#clear-practice-confirm');
+    if (button.disabled) return;
+    setBusy(button, true, 'Удаляем…');
+    try {
+      const result = await api('/admin/practice/cycles', { method: 'DELETE' });
+      $('#clear-practice-dialog').close();
+      resetPracticeAfterAdminClear();
+      showToast(`Удалено циклов практики: ${result.deletedCycles}`);
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setBusy(button, false, 'Удалить все циклы');
+    }
+  }
+
   async function loadModeration() {
     if (!currentUser?.roles?.includes('ADMIN')) return;
     $('#moderation-status').textContent = 'Загружаем очередь…';
@@ -1376,6 +1412,9 @@
   }
 
   function bindModeration() {
+    $('#clear-practice-cycles').addEventListener('click', requestClearPracticeCycles);
+    $('#clear-practice-form').addEventListener('submit', confirmClearPracticeCycles);
+    $('#clear-practice-cancel').addEventListener('click', () => $('#clear-practice-dialog').close());
     $$('.moderation-generation-button').forEach(button => button.addEventListener('click', () => {
       generateCandidates(button.dataset.generationTarget);
     }));

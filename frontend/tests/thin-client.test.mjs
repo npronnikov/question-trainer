@@ -90,6 +90,17 @@ test('moderation generates one targeted candidate with the shared model picker',
   assert.match(app, /\$\$\('\.moderation-generation-button'\)/);
 });
 
+test('moderation exposes a confirmed admin cleanup for all practice cycles', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(html, /id="clear-practice-cycles"/);
+  assert.match(html, /<dialog[^>]*id="clear-practice-dialog"/);
+  assert.match(html, /id="clear-practice-confirm"[^>]*class="danger-button"/);
+  assert.match(app, /api\('\/admin\/practice\/cycles', \{ method: 'DELETE' \}\)/);
+  assert.match(app, /Удалено циклов практики:/);
+});
+
 test('moderation list uses 50 characters and approval clears the editor', async () => {
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
 
@@ -231,19 +242,31 @@ test('practice locks submitted values and guards duplicate mutations', async () 
   assert.match(app, /buttons\.some\(button => button\.disabled\)/);
 });
 
-test('practice gates new assignments until PASSED and explains catalog exhaustion', async () => {
+test('practice allows a new assignment alongside unfinished cycles and explains catalog exhaustion', async () => {
   const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
   const startPractice = app.match(/async function startPractice\(\)[\s\S]*?async function selectPracticeCycle/)?.[0] || '';
 
   assert.match(html, /id="practice-availability"[^>]*role="status"[^>]*aria-live="polite"/);
-  assert.match(app, /PRACTICE_ASSIGNMENT_INCOMPLETE/);
   assert.match(app, /PRACTICE_CATALOG_EXHAUSTED/);
-  assert.match(app, /practiceCycles\.find\(cycle => cycle\.status !== 'PASSED'\)/);
   assert.match(app, /function syncPracticeAvailability/);
   assert.match(app, /error\.problem\?\.code/);
   assert.match(app, /Вы прошли все доступные ситуации\. Дождитесь, пока администратор добавит новые\./);
   assert.match(startPractice, /code === PRACTICE_CATALOG_EXHAUSTED\) \{[^}]*showToast/);
+  assert.doesNotMatch(app, /PRACTICE_ASSIGNMENT_INCOMPLETE/);
+  assert.doesNotMatch(app, /practiceCycles\.find\(cycle => cycle\.status !== 'PASSED'\)/);
+  assert.doesNotMatch(startPractice, /code === PRACTICE_ASSIGNMENT_INCOMPLETE/);
+});
+
+test('practice feedback leads into an explicit revision form', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.ok(html.indexOf('id="practice-feedback"') < html.indexOf('id="practice-form"'));
+  assert.match(html, /id="practice-revision-intro"[^>]*hidden/);
+  assert.match(app, /Исправление попытки/);
+  assert.match(app, /Перейти к исправлению/);
+  assert.match(app, /scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)/);
 });
 
 test('trainer loads ignore stale responses and clear controls on failure', async () => {
@@ -309,7 +332,7 @@ test('practice omits the overview action and redundant labels', async () => {
 test('targeted moderation invalidates the offline shell cache', async () => {
   const serviceWorker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
 
-  assert.match(serviceWorker, /const CACHE = 'question-hacker-v15';/);
+  assert.match(serviceWorker, /const CACHE = 'question-hacker-v16';/);
 });
 
 test('boot activates the hash route before background API hydration', async () => {
