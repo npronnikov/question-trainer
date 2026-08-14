@@ -101,6 +101,57 @@ class ChatServiceStreamTest {
         verify(streams, never()).done(eq(runId), anyString(), anyString(), any());
     }
 
+    @Test
+    void successfulAcpPersistenceFailurePublishesFailureWithoutFalsePartialRecovery() {
+        prepareStore();
+        when(acp.ask(anyString(), eq("test-model"), any())).thenAnswer(invocation -> {
+            Consumer<String> onSnapshot = invocation.getArgument(2);
+            onSnapshot.accept("полный ответ");
+            return "полный ответ";
+        });
+        when(store.addMessage(ownerId, sessionId, "ASSISTANT", "ACP", "полный ответ"))
+                .thenThrow(new IllegalStateException("database offline"));
+
+        UUID runId = service(true).send(ownerId, sessionId, "Вопрос", "test-model");
+
+        verify(streams).error(runId, "Не удалось сохранить ответ: database offline");
+        verify(store, never()).addMessage(eq(ownerId), eq(sessionId), eq("ASSISTANT"),
+                eq("ACP_PARTIAL"), anyString());
+        verify(fallback, never()).answer(anyString());
+        verify(streams, never()).done(eq(runId), anyString(), anyString(), any());
+    }
+
+    @Test
+    void partialPersistenceFailureStillTerminatesTheStream() {
+        prepareStore();
+        when(acp.ask(anyString(), eq("test-model"), any())).thenAnswer(invocation -> {
+            Consumer<String> onSnapshot = invocation.getArgument(2);
+            onSnapshot.accept("частичный ответ");
+            throw new IllegalStateException("обрыв");
+        });
+        String partial = "частичный ответ\n\n---\n\n_Ответ ACP-агента оборвался: обрыв_";
+        when(store.addMessage(ownerId, sessionId, "ASSISTANT", "ACP_PARTIAL", partial))
+                .thenThrow(new IllegalStateException("database offline"));
+
+        UUID runId = service(true).send(ownerId, sessionId, "Вопрос", "test-model");
+
+        verify(streams).error(runId, "Не удалось сохранить ответ: database offline");
+        verify(streams, never()).done(eq(runId), anyString(), anyString(), any());
+    }
+
+    @Test
+    void fallbackFailureStillTerminatesTheStream() {
+        prepareStore();
+        when(acp.ask(anyString(), eq("test-model"), any()))
+                .thenThrow(new IllegalStateException("offline"));
+        when(fallback.answer("Вопрос")).thenThrow(new IllegalStateException("fallback failed"));
+
+        UUID runId = service(true).send(ownerId, sessionId, "Вопрос", "test-model");
+
+        verify(streams).error(runId, "Резервный ответ недоступен: fallback failed");
+        verify(streams, never()).done(eq(runId), anyString(), anyString(), any());
+    }
+
     private ChatService service(boolean fallbackEnabled) {
         var properties = new AppProperties(
                 new AppProperties.Acp(true, fallbackEnabled, "codex", List.of(), ".",

@@ -86,31 +86,66 @@ public class ChatService {
 
     private void execute(UUID runId, UUID ownerId, UUID sessionId, String userText, String model) {
         var latestSnapshot = new AtomicReference<>("");
+        String prompt;
         try {
-            String prompt = buildPrompt(ownerId, sessionId);
-            String answer = acp.ask(prompt, model, snapshot -> {
+            prompt = buildPrompt(ownerId, sessionId);
+        } catch (Exception error) {
+            log.warn("Coach run {} could not build its prompt", runId, error);
+            streams.error(runId, "Не удалось подготовить ответ: " + safe(error.getMessage()));
+            return;
+        }
+
+        String answer;
+        try {
+            answer = acp.ask(prompt, model, snapshot -> {
                 latestSnapshot.set(snapshot);
                 streams.snapshot(runId, snapshot);
             });
-            var saved = store.addMessage(ownerId, sessionId, "ASSISTANT", "ACP", answer);
-            streams.done(runId, answer, "ACP", saved.id());
         } catch (Exception error) {
-            log.warn("Coach run {} failed", runId, error);
-            if (!latestSnapshot.get().isEmpty()) {
-                String answer = latestSnapshot.get()
-                        + "\n\n---\n\n_Ответ ACP-агента оборвался: "
-                        + safe(error.getMessage()) + "_";
-                var saved = store.addMessage(ownerId, sessionId, "ASSISTANT", "ACP_PARTIAL", answer);
-                streams.done(runId, answer, "ACP_PARTIAL", saved.id());
-            } else if (properties.acp().fallbackEnabled()) {
-                String answer = fallback.answer(userText);
-                streamFallback(runId, answer);
-                var saved = store.addMessage(ownerId, sessionId, "ASSISTANT", "FALLBACK", answer);
-                streams.done(runId, answer, "FALLBACK", saved.id());
-            } else {
-                streams.error(runId, "ACP-агент недоступен: " + safe(error.getMessage()));
-            }
+            recoverFromAcpFailure(runId, ownerId, sessionId, userText,
+                    latestSnapshot.get(), error);
+            return;
         }
+
+        saveAndComplete(runId, ownerId, sessionId, answer, "ACP");
+    }
+
+    private void recoverFromAcpFailure(UUID runId, UUID ownerId, UUID sessionId,
+                                       String userText, String latestSnapshot, Exception error) {
+        log.warn("Coach run {} failed", runId, error);
+        if (!latestSnapshot.isEmpty()) {
+            String partial = latestSnapshot
+                    + "\n\n---\n\n_Ответ ACP-агента оборвался: "
+                    + safe(error.getMessage()) + "_";
+            saveAndComplete(runId, ownerId, sessionId, partial, "ACP_PARTIAL");
+            return;
+        }
+        if (!properties.acp().fallbackEnabled()) {
+            streams.error(runId, "ACP-агент недоступен: " + safe(error.getMessage()));
+            return;
+        }
+
+        try {
+            String answer = fallback.answer(userText);
+            streamFallback(runId, answer);
+            saveAndComplete(runId, ownerId, sessionId, answer, "FALLBACK");
+        } catch (Exception fallbackError) {
+            log.warn("Coach run {} fallback failed", runId, fallbackError);
+            streams.error(runId, "Резервный ответ недоступен: " + safe(fallbackError.getMessage()));
+        }
+    }
+
+    private void saveAndComplete(UUID runId, UUID ownerId, UUID sessionId,
+                                 String answer, String source) {
+        DatabaseStore.MessageRow saved;
+        try {
+            saved = store.addMessage(ownerId, sessionId, "ASSISTANT", source, answer);
+        } catch (Exception error) {
+            log.warn("Coach run {} could not persist its {} answer", runId, source, error);
+            streams.error(runId, "Не удалось сохранить ответ: " + safe(error.getMessage()));
+            return;
+        }
+        streams.done(runId, answer, source, saved.id());
     }
 
     private String validateModel(String requested) {
