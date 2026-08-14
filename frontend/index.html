@@ -226,8 +226,8 @@
       <section class="view" id="view-moderation" data-view="moderation">
         <div class="moderation-shell shell">
           <header class="moderation-header">
-            <div><div class="section-number">04 / КОНТУР КАЧЕСТВА</div><h1>Ни один кейс<br>не проходит напрямую.</h1></div>
-            <div class="moderation-generate">
+            <div class="moderation-heading"><div class="section-number">04 / КОНТУР КАЧЕСТВА</div><h1>Ни один кейс<br>не проходит напрямую.</h1></div>
+            <div class="moderation-generate" role="region" aria-label="Управление кейсами">
               <div class="model-picker moderation-model-picker">
                 <span class="model-picker-label">Модель</span>
                 <button class="model-trigger" id="moderation-model-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="moderation-model-popover" disabled>
@@ -238,8 +238,10 @@
                 <div class="model-popover" id="moderation-model-popover" role="listbox" aria-label="Модель генерации" hidden></div>
                 <select class="model-select" aria-hidden="true" tabindex="-1" hidden disabled><option>—</option></select>
               </div>
-              <button class="secondary-button moderation-generation-button" data-generation-target="PRACTICE" type="button">Для практики</button>
-              <button class="primary-button moderation-generation-button" data-generation-target="TRAINER" type="button">Для тренажёра <span>→</span></button>
+              <div class="moderation-generation-menu" role="group" aria-label="Создать новый кейс">
+                <button class="moderation-generation-button" data-generation-target="PRACTICE" type="button"><span aria-hidden="true">＋</span> Для практики</button>
+                <button class="moderation-generation-button" data-generation-target="TRAINER" type="button"><span aria-hidden="true">＋</span> Для тренажёра</button>
+              </div>
               <button class="danger-button moderation-clear-button" id="clear-practice-cycles" type="button">Удалить циклы практики</button>
             </div>
           </header>
