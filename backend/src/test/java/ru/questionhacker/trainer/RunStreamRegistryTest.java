@@ -17,50 +17,116 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 class RunStreamRegistryTest {
 
     @Test
-    void subscriberReceivesBacklogAndLiveDeltaExactlyOnceInOrder() throws Exception {
+    void lateSubscriberReceivesOnlyTheLatestSnapshot() {
         var emitter = new RecordingSseEmitter();
         var subject = new RunStreamRegistry(timeout -> emitter);
         UUID ownerId = UUID.randomUUID();
         UUID runId = subject.create(ownerId);
-        subject.delta(runId, "старый");
 
-        subscribeWhilePublishing(subject, ownerId, runId,
-                () -> subject.delta(runId, "новый"));
+        subject.snapshot(runId, "первый");
+        subject.snapshot(runId, "первый второй");
+        subject.subscribe(ownerId, runId);
 
-        assertThat(emitter.eventNames()).containsExactly("delta", "delta");
-        assertThat(emitter.textPayloads()).containsExactly("старый", "новый");
+        assertThat(emitter.eventNames()).containsExactly("snapshot");
+        assertThat(emitter.payloads()).containsExactly(Map.of(
+                "version", 2L,
+                "text", "первый второй"));
         assertThat(emitter.completed()).isFalse();
     }
 
     @Test
-    void completionRacingWithSubscriptionArrivesOnceAfterBacklog() throws Exception {
+    void activeSubscriberReceivesMonotonicSnapshotsAndAuthoritativeDone() {
         var emitter = new RecordingSseEmitter();
         var subject = new RunStreamRegistry(timeout -> emitter);
         UUID ownerId = UUID.randomUUID();
         UUID runId = subject.create(ownerId);
-        subject.delta(runId, "частичный ответ");
+        UUID messageId = UUID.randomUUID();
+        subject.subscribe(ownerId, runId);
 
-        subscribeWhilePublishing(subject, ownerId, runId,
-                () -> subject.done(runId, "ACP", UUID.randomUUID()));
+        subject.snapshot(runId, "часть");
+        subject.done(runId, "полный ответ", "ACP", messageId);
 
-        assertThat(emitter.eventNames()).containsExactly("delta", "done");
-        assertThat(emitter.textPayloads()).containsExactly("частичный ответ");
+        assertThat(emitter.eventNames()).containsExactly("snapshot", "done");
+        assertThat(emitter.payloads()).containsExactly(
+                Map.of("version", 1L, "text", "часть"),
+                Map.of(
+                        "version", 2L,
+                        "text", "полный ответ",
+                        "source", "ACP",
+                        "messageId", messageId.toString()));
         assertThat(emitter.completed()).isTrue();
     }
 
     @Test
-    void failureRacingWithSubscriptionArrivesOnceAfterBacklog() throws Exception {
+    void completedRunReplaysOnlyAuthoritativeDone() {
         var emitter = new RecordingSseEmitter();
         var subject = new RunStreamRegistry(timeout -> emitter);
         UUID ownerId = UUID.randomUUID();
         UUID runId = subject.create(ownerId);
-        subject.delta(runId, "частичный ответ");
+        UUID messageId = UUID.randomUUID();
+        subject.snapshot(runId, "часть");
+        subject.done(runId, "полный ответ", "ACP", messageId);
+
+        subject.subscribe(ownerId, runId);
+
+        assertThat(emitter.eventNames()).containsExactly("done");
+        assertThat(emitter.payloads()).containsExactly(Map.of(
+                "version", 2L,
+                "text", "полный ответ",
+                "source", "ACP",
+                "messageId", messageId.toString()));
+        assertThat(emitter.completed()).isTrue();
+    }
+
+    @Test
+    void snapshotRacingWithSubscriptionArrivesExactlyOnce() throws Exception {
+        var emitter = new RecordingSseEmitter();
+        var subject = new RunStreamRegistry(timeout -> emitter);
+        UUID ownerId = UUID.randomUUID();
+        UUID runId = subject.create(ownerId);
+        subject.snapshot(runId, "старый");
+
+        subscribeWhilePublishing(subject, ownerId, runId,
+                () -> subject.snapshot(runId, "новый"));
+
+        assertThat(emitter.eventNames()).containsExactly("snapshot");
+        assertThat(emitter.payloads()).containsExactly(Map.of(
+                "version", 2L,
+                "text", "новый"));
+        assertThat(emitter.completed()).isFalse();
+    }
+
+    @Test
+    void failureRacingWithSubscriptionReplaysOnlyFailure() throws Exception {
+        var emitter = new RecordingSseEmitter();
+        var subject = new RunStreamRegistry(timeout -> emitter);
+        UUID ownerId = UUID.randomUUID();
+        UUID runId = subject.create(ownerId);
+        subject.snapshot(runId, "частичный ответ");
 
         subscribeWhilePublishing(subject, ownerId, runId,
                 () -> subject.error(runId, "соединение потеряно"));
 
-        assertThat(emitter.eventNames()).containsExactly("delta", "failure");
-        assertThat(emitter.textPayloads()).containsExactly("частичный ответ");
+        assertThat(emitter.eventNames()).containsExactly("failure");
+        assertThat(emitter.payloads()).containsExactly(Map.of(
+                "message", "соединение потеряно"));
+        assertThat(emitter.completed()).isTrue();
+    }
+
+    @Test
+    void publicationsAfterTerminalEventAreIgnored() {
+        var emitter = new RecordingSseEmitter();
+        var subject = new RunStreamRegistry(timeout -> emitter);
+        UUID ownerId = UUID.randomUUID();
+        UUID runId = subject.create(ownerId);
+        subject.subscribe(ownerId, runId);
+
+        subject.snapshot(runId, "ответ");
+        subject.done(runId, "ответ", "ACP", UUID.randomUUID());
+        subject.snapshot(runId, "запоздавший текст");
+        subject.error(runId, "запоздавшая ошибка");
+
+        assertThat(emitter.eventNames()).containsExactly("snapshot", "done");
         assertThat(emitter.completed()).isTrue();
     }
 
@@ -128,12 +194,8 @@ class RunStreamRegistryTest {
             return events.stream().map(RecordedEvent::name).toList();
         }
 
-        synchronized List<String> textPayloads() {
-            return events.stream()
-                    .map(RecordedEvent::payload)
-                    .filter(payload -> payload.get("text") instanceof String)
-                    .map(payload -> (String) payload.get("text"))
-                    .toList();
+        synchronized List<Map<?, ?>> payloads() {
+            return events.stream().map(RecordedEvent::payload).toList();
         }
 
         synchronized boolean completed() {

@@ -2,7 +2,6 @@ package ru.questionhacker.trainer;
 
 import java.io.IOException;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -53,32 +52,20 @@ public class RunStreamRegistry {
 
         beforeHandoff.run();
         synchronized (state) {
-            state.backlog.forEach(event -> send(emitter, event));
             if (state.completed) {
                 send(emitter, state.terminalEvent);
                 emitter.complete();
             } else {
+                if (state.hasSnapshot) {
+                    send(emitter, snapshotEvent(state));
+                }
                 state.emitters.add(emitter);
             }
         }
         return emitter;
     }
 
-    public void delta(UUID runId, String text) {
-        publish(runId, new StreamEvent("delta", Map.of("text", text)), false);
-    }
-
-    public void done(UUID runId, String source, UUID messageId) {
-        publish(runId, new StreamEvent("done", Map.of(
-                "source", source,
-                "messageId", messageId.toString())), true);
-    }
-
-    public void error(UUID runId, String message) {
-        publish(runId, new StreamEvent("failure", Map.of("message", message)), true);
-    }
-
-    private void publish(UUID runId, StreamEvent event, boolean terminal) {
+    public void snapshot(UUID runId, String text) {
         var state = streams.get(runId);
         if (state == null) {
             return;
@@ -87,18 +74,83 @@ public class RunStreamRegistry {
             if (state.completed) {
                 return;
             }
-            if (terminal) {
-                state.completed = true;
-                state.terminalEvent = event;
-            } else {
-                state.backlog.add(event);
-            }
-            state.emitters.forEach(emitter -> send(emitter, event));
-            if (terminal) {
-                state.emitters.forEach(SseEmitter::complete);
-                state.emitters.clear();
-            }
+            state.version++;
+            state.text = text;
+            state.hasSnapshot = true;
+            sendAll(state, snapshotEvent(state));
         }
+    }
+
+    @Deprecated(forRemoval = true)
+    public void delta(UUID runId, String text) {
+        snapshot(runId, text);
+    }
+
+    public void done(UUID runId, String text, String source, UUID messageId) {
+        var state = streams.get(runId);
+        if (state == null) {
+            return;
+        }
+        synchronized (state) {
+            if (state.completed) {
+                return;
+            }
+            state.completed = true;
+            state.version++;
+            state.text = text;
+            state.hasSnapshot = true;
+            state.terminalEvent = new StreamEvent("done", Map.of(
+                    "version", state.version,
+                    "text", state.text,
+                    "source", source,
+                    "messageId", messageId.toString()));
+            sendAll(state, state.terminalEvent);
+            completeAll(state);
+        }
+    }
+
+    @Deprecated(forRemoval = true)
+    public void done(UUID runId, String source, UUID messageId) {
+        var state = streams.get(runId);
+        if (state == null) {
+            return;
+        }
+        String text;
+        synchronized (state) {
+            text = state.text;
+        }
+        done(runId, text, source, messageId);
+    }
+
+    public void error(UUID runId, String message) {
+        var state = streams.get(runId);
+        if (state == null) {
+            return;
+        }
+        synchronized (state) {
+            if (state.completed) {
+                return;
+            }
+            state.completed = true;
+            state.terminalEvent = new StreamEvent("failure", Map.of("message", message));
+            sendAll(state, state.terminalEvent);
+            completeAll(state);
+        }
+    }
+
+    private StreamEvent snapshotEvent(StreamState state) {
+        return new StreamEvent("snapshot", Map.of(
+                "version", state.version,
+                "text", state.text));
+    }
+
+    private void sendAll(StreamState state, StreamEvent event) {
+        state.emitters.forEach(emitter -> send(emitter, event));
+    }
+
+    private void completeAll(StreamState state) {
+        state.emitters.forEach(SseEmitter::complete);
+        state.emitters.clear();
     }
 
     private void send(SseEmitter emitter, StreamEvent event) {
@@ -114,7 +166,9 @@ public class RunStreamRegistry {
     private static final class StreamState {
         private final UUID ownerId;
         private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
-        private final List<StreamEvent> backlog = new ArrayList<>();
+        private long version;
+        private String text = "";
+        private boolean hasSnapshot;
         private boolean completed;
         private StreamEvent terminalEvent;
 
