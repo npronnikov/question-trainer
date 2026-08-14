@@ -81,11 +81,6 @@ public class RunStreamRegistry {
         }
     }
 
-    @Deprecated(forRemoval = true)
-    public void delta(UUID runId, String text) {
-        snapshot(runId, text);
-    }
-
     public void done(UUID runId, String text, String source, UUID messageId) {
         var state = streams.get(runId);
         if (state == null) {
@@ -107,19 +102,6 @@ public class RunStreamRegistry {
             sendAll(state, state.terminalEvent);
             completeAll(state);
         }
-    }
-
-    @Deprecated(forRemoval = true)
-    public void done(UUID runId, String source, UUID messageId) {
-        var state = streams.get(runId);
-        if (state == null) {
-            return;
-        }
-        String text;
-        synchronized (state) {
-            text = state.text;
-        }
-        done(runId, text, source, messageId);
     }
 
     public void error(UUID runId, String message) {
