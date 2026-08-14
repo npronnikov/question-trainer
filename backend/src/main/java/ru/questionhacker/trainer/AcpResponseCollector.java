@@ -15,7 +15,7 @@ final class AcpResponseCollector implements Consumer<SessionNotification> {
     }
 
     @Override
-    public void accept(SessionNotification notification) {
+    public synchronized void accept(SessionNotification notification) {
         if (notification.update() instanceof AgentMessageChunk message) {
             AcpMessageFilter.visibleText(message).ifPresent(text -> {
                 chunks.append(text);
@@ -24,11 +24,11 @@ final class AcpResponseCollector implements Consumer<SessionNotification> {
         }
     }
 
-    boolean isEmpty() {
+    synchronized boolean isEmpty() {
         return chunks.isEmpty();
     }
 
-    String text() {
+    synchronized String text() {
         return chunks.toString();
     }
 }
