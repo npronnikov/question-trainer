@@ -24,12 +24,21 @@ class ModelAssessmentParserTest {
     }
 
     @Test
-    void rejectsScoreThatDoesNotMatchFourStrengthDimensions() {
-        assertThatThrownBy(() -> parser.parse(
+    void derivesStrengthScoreFromIndividualDimensions() {
+        var result = parser.parse(
                 validJson().replace("\"score\":3,\"dimensions\"", "\"score\":4,\"dimensions\""),
-                "INVERSION"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("strength score");
+                "INVERSION");
+
+        assertThat(result.questionStrength().score()).isEqualTo(3);
+    }
+
+    @Test
+    void derivesCompletenessStatusFromIndividualSteps() {
+        var result = parser.parse(
+                validJson().replaceFirst("\"status\":\"PASS\"", "\"status\":\"FAIL\""),
+                "INVERSION");
+
+        assertThat(result.completeness().status()).isEqualTo("PASS");
     }
 
     @Test
@@ -42,18 +51,13 @@ class ModelAssessmentParserTest {
     }
 
     @Test
-    void rejectsMarkdownWrapperWrongSchemaAndInconsistentCompleteness() {
+    void rejectsMarkdownWrapperAndWrongSchema() {
         assertThatThrownBy(() -> parser.parse("```json\n" + validJson() + "\n```", "INVERSION"))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> parser.parse(
                 validJson().replace("practice-assessment-v1", "practice-assessment-v2"),
                 "INVERSION"))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> parser.parse(
-                validJson().replaceFirst("\"status\":\"PASS\"", "\"status\":\"FAIL\""),
-                "INVERSION"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("completeness");
     }
 
     private String validJson() {

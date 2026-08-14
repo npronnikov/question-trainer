@@ -20,6 +20,9 @@ import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +35,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.slf4j.LoggerFactory;
 
 import ru.questionhacker.trainer.auth.UserAccountRepository;
 
@@ -118,6 +122,34 @@ class PracticeAttemptLifecycleTest {
         assertThat(terminal.path("assessment").has("questionStrengthScore")).isFalse();
         assertThat(terminal.path("assessment").path("feedback").asText())
                 .contains("семантическая оценка недоступна");
+    }
+
+    @Test
+    void invalidModelAssessmentLogsValidationReasonAndStackTrace() throws Exception {
+        when(gateway.assess(any(), anyString())).thenReturn(
+                new PracticeAssessmentGateway.Result(
+                        validAssessment(1, 3, "HIGH", null)
+                                .replace("[\"question\"]", "[\"unknown\"]"),
+                        "test-model"));
+        Logger logger = (Logger) LoggerFactory.getLogger(PracticeAssessmentService.class);
+        var appender = new ListAppender<ILoggingEvent>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            UUID attempt = submit("assessment-alice", assignment("assessment-alice"), "key-invalid-log");
+
+            assertThat(awaitTerminal("assessment-alice", attempt).path("status").asText())
+                    .isEqualTo("UNVERIFIED");
+            ILoggingEvent warning = appender.list.stream()
+                    .filter(event -> event.getFormattedMessage().contains(attempt.toString()))
+                    .findFirst().orElseThrow();
+            assertThat(warning.getFormattedMessage()).contains("unknown revision field");
+            assertThat(warning.getThrowableProxy()).isNotNull();
+            assertThat(warning.getThrowableProxy().getMessage()).isEqualTo("unknown revision field");
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
     }
 
     @Test

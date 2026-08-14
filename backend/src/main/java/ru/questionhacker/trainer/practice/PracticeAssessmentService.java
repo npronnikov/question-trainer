@@ -157,8 +157,8 @@ public class PracticeAssessmentService {
             String status = verdict(assessment);
             saveVerified(attempt, assessment, status, result.modelId(), elapsedMillis(started));
         } catch (Exception error) {
-            log.warn("Practice assessment {} became unverified: {}",
-                    attemptId, error.getClass().getSimpleName());
+            log.warn("Practice assessment {} became unverified: {}: {}",
+                    attemptId, error.getClass().getSimpleName(), error.getMessage(), error);
             saveUnverified(attempt, error, elapsedMillis(started));
         }
     }

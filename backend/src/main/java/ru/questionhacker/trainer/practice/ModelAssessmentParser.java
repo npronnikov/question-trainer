@@ -36,8 +36,35 @@ public class ModelAssessmentParser {
         } catch (JsonProcessingException error) {
             throw new IllegalArgumentException("Invalid assessment JSON", error);
         }
-        validate(result, targetCategory);
-        return result;
+        ModelAssessment normalized = normalizeDerivedValues(result);
+        validate(normalized, targetCategory);
+        return normalized;
+    }
+
+    private ModelAssessment normalizeDerivedValues(ModelAssessment value) {
+        if (value == null) return null;
+
+        ModelAssessment.Completeness completeness = value.completeness();
+        if (completeness != null && completeness.steps() != null
+                && completeness.steps().stream().allMatch(step -> step != null
+                && Set.of("PASS", "FAIL").contains(step.status()))) {
+            String status = completeness.steps().stream()
+                    .allMatch(step -> "PASS".equals(step.status())) ? "PASS" : "FAIL";
+            completeness = new ModelAssessment.Completeness(status, completeness.steps());
+        }
+
+        ModelAssessment.QuestionStrength strength = value.questionStrength();
+        if (strength != null && strength.dimensions() != null
+                && strength.dimensions().stream().allMatch(dimension -> dimension != null)) {
+            int score = (int) strength.dimensions().stream()
+                    .filter(ModelAssessment.StrengthDimension::met).count();
+            strength = new ModelAssessment.QuestionStrength(score, strength.dimensions());
+        }
+
+        return new ModelAssessment(
+                value.schemaVersion(), completeness, value.categoryFit(), strength,
+                value.confidence(), value.strengths(), value.priorityCorrection(),
+                value.fieldsToRevise(), value.feedback());
     }
 
     private void validate(ModelAssessment value, String targetCategory) {
