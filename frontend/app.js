@@ -51,6 +51,7 @@
   let practiceDraftPromise = null;
   let practiceDraftDirty = false;
   let practiceEditorBaseAttemptId = null;
+  let practiceEditableFields = [];
   let practiceSubmitting = false;
   let moderationStatus = 'PENDING_REVIEW';
   let moderationRows = [];
@@ -786,6 +787,7 @@
     practiceAssignment = cycle.assignment;
     practiceAttempt = cycle.attempts.at(-1) || null;
     practiceEditorBaseAttemptId = cycle.editor.baseAttemptId;
+    practiceEditableFields = cycle.editor.editableFields;
     practiceDraftDirty = false;
     $('#practice-empty').classList.add('is-hidden');
     $('#practice-workspace').classList.remove('is-hidden');
@@ -797,7 +799,7 @@
       $(`#practice-${field}`).value = cycle.editor[field] || '';
     });
     const locked = cycle.editor.editableFields.length === 0;
-    setRevisionFields(cycle.editor.editableFields, locked);
+    setRevisionFields(practiceEditableFields, locked);
     $('#practice-attempt').textContent = practiceAttempt
       ? `Попытка ${practiceAttempt.attemptNumber} · ${practiceStatusLabel(practiceAttempt.status)}`
       : 'Попытка 1 · черновик';
@@ -908,7 +910,9 @@
     const attempt = practiceAttempt;
     const values = practiceValues();
     const fieldsToRevise = attempt?.assessment?.fieldsToRevise || [];
-    const error = validatePractice(values, attempt?.status === 'NEEDS_REVISION' ? fieldsToRevise : null);
+    const editableFields = ['NEEDS_REVISION', 'UNVERIFIED'].includes(attempt?.status)
+      ? practiceEditableFields : null;
+    const error = validatePractice(values, editableFields);
     if (error) {
       $('#practice-error').textContent = error;
       return;
@@ -920,10 +924,15 @@
     await flushPracticeDraft();
     $('#practice-error').textContent = '';
     const revision = attempt?.status === 'NEEDS_REVISION';
-    const path = revision ? `/practice/attempts/${attempt.attemptId}/revisions` : '/practice/attempts';
+    const retry = attempt?.status === 'UNVERIFIED';
+    const path = revision
+      ? `/practice/attempts/${attempt.attemptId}/revisions`
+      : retry ? `/practice/attempts/${attempt.attemptId}/retries` : '/practice/attempts';
     const body = revision
       ? Object.fromEntries([...fieldsToRevise.map(field => [field, values[field]]), ['model', selectedModel], ['idempotencyKey', idempotencyKey('revision')]])
-      : { assignmentId: assignment.assignmentId, ...values, model: selectedModel, idempotencyKey: idempotencyKey('attempt') };
+      : retry
+        ? { ...values, model: selectedModel, idempotencyKey: idempotencyKey('retry') }
+        : { assignmentId: assignment.assignmentId, ...values, model: selectedModel, idempotencyKey: idempotencyKey('attempt') };
     try {
       practiceAttempt = await api(path, { method: 'POST', body: JSON.stringify(body) });
       practiceDraftDirty = false;
@@ -933,8 +942,8 @@
     } catch (requestError) {
       practiceSubmitting = false;
       $('#practice-error').textContent = requestError.message;
-      setBusy($('#submit-practice'), false, 'Отправить на оценку →');
-      setRevisionFields(revision ? fieldsToRevise : []);
+      setBusy($('#submit-practice'), false, retry ? 'Повторить проверку →' : 'Отправить на оценку →');
+      setRevisionFields(revision ? fieldsToRevise : retry ? practiceEditableFields : []);
     }
   }
 
@@ -989,11 +998,11 @@
       <p>${escapeHtml(assessment.feedback)}</p>
       ${assessment.strengths?.length ? `<div class="feedback-next"><strong>Что уже хорошо</strong><span>${assessment.strengths.map(escapeHtml).join(' · ')}</span></div>` : ''}
       ${!passed && !unverified ? `<div class="feedback-next"><strong>Приоритетная правка</strong><span>${escapeHtml(assessment.priorityCorrection.what)} — ${escapeHtml(assessment.priorityCorrection.why)}<br><em>${escapeHtml(assessment.priorityCorrection.example)}</em></span></div>` : ''}
-      <div class="back-actions">${passed ? '<button class="primary-button" id="practice-next" type="button">Следующая ситуация <span>→</span></button>' : unverified ? '<button class="secondary-button" id="practice-retry" type="button">Проверить позже</button>' : '<button class="primary-button" id="practice-revise" type="button">Перейти к исправлению <span>→</span></button>'}</div>`;
-    setBusy($('#submit-practice'), false, passed ? 'Зачтено' : 'Отправить исправление →');
-    $('#submit-practice').disabled = passed || unverified;
+      <div class="back-actions">${passed ? '<button class="primary-button" id="practice-next" type="button">Следующая ситуация <span>→</span></button>' : unverified ? '<button class="primary-button" id="practice-retry" type="button">Повторить проверку <span>→</span></button>' : '<button class="primary-button" id="practice-revise" type="button">Перейти к исправлению <span>→</span></button>'}</div>`;
+    setBusy($('#submit-practice'), false, passed ? 'Зачтено' : unverified ? 'Повторить проверку →' : 'Отправить исправление →');
+    $('#submit-practice').disabled = passed;
     if (passed) $('#practice-next').addEventListener('click', startPractice);
-    if (unverified) $('#practice-retry').addEventListener('click', () => showToast('Попытка сохранена. Создайте новую проверку, когда модель будет доступна.'));
+    if (unverified) $('#practice-retry').addEventListener('click', () => focusFirstRevision(practiceEditableFields));
     if (!passed && !unverified) {
       setRevisionFields(assessment.fieldsToRevise);
       $('#practice-revise').addEventListener('click', () => focusFirstRevision(assessment.fieldsToRevise));
@@ -1007,18 +1016,25 @@
 
   function setRevisionFields(fields, locked = false) {
     const revision = !locked && practiceAttempt?.status === 'NEEDS_REVISION' && fields.length > 0;
+    const retry = !locked && practiceAttempt?.status === 'UNVERIFIED' && fields.length > 0;
     const form = $('#practice-form');
     const intro = $('#practice-revision-intro');
-    intro.hidden = !revision;
-    form.classList.toggle('is-revision', revision);
+    intro.hidden = !revision && !retry;
+    form.classList.toggle('is-revision', revision || retry);
     if (revision) {
       $('#practice-revision-title').textContent = `Исправление попытки ${practiceAttempt.attemptNumber}`;
       $('#practice-revision-fields').textContent = `Измените: ${fields.map(field => FIELD_LABELS[field] || field).join(', ')}.`;
       setBusy($('#submit-practice'), false, 'Отправить исправление →');
     }
+    if (retry) {
+      $('#practice-revision-title').textContent = `Повторная проверка попытки ${practiceAttempt.attemptNumber}`;
+      $('#practice-revision-fields').textContent = `Можно изменить: ${fields.map(field => FIELD_LABELS[field] || field).join(', ')}.`;
+      setBusy($('#submit-practice'), false, 'Повторить проверку →');
+    }
     Object.keys(FIELD_LABELS).forEach(field => {
       const input = $(`#practice-${field}`);
-      const editable = !locked && (!revision || fields.includes(field));
+      const restricted = revision || retry;
+      const editable = !locked && (!restricted || fields.includes(field));
       input.disabled = !editable;
       input.classList.toggle('needs-revision', revision && editable);
     });

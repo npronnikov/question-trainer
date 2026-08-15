@@ -285,6 +285,21 @@ test('practice feedback leads into an explicit revision form', async () => {
   assert.match(app, /scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)/);
 });
 
+test('unverified practice enables an editable server retry', async () => {
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+  const submit = app.match(/async function submitPractice\(event\)[\s\S]*?async function followAttempt/)?.[0] || '';
+  const feedback = app.match(/function renderPracticeFeedback\(attempt, focus = true\)[\s\S]*?function setRevisionFields/)?.[0] || '';
+
+  assert.match(app, /practiceEditableFields = cycle\.editor\.editableFields/);
+  assert.match(app, /const retry = attempt\?\.status === 'UNVERIFIED'/);
+  assert.match(submit, /`\/practice\/attempts\/\$\{attempt\.attemptId\}\/retries`/);
+  assert.match(submit, /idempotencyKey\('retry'\)/);
+  assert.match(app, /Повторная проверка попытки/);
+  assert.match(app, /Повторить проверку →/);
+  assert.match(feedback, /practice-retry[\s\S]*focusFirstRevision\(practiceEditableFields\)/);
+  assert.doesNotMatch(feedback, /disabled = passed \|\| unverified/);
+});
+
 test('trainer loads ignore stale responses and clear controls on failure', async () => {
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
 
