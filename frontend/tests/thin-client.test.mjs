@@ -102,11 +102,11 @@ test('moderation exposes a confirmed admin cleanup for all practice cycles', asy
   assert.match(app, /Удалено циклов практики:/);
 });
 
-test('moderation list uses 50 characters and approval clears the editor', async () => {
+test('moderation list uses 50 characters, marks truncation, and approval clears the editor', async () => {
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
 
   assert.match(app, /function firstCharacters\(value, limit = 50\)/);
-  assert.match(app, /Array\.from\(String\(value \|\| ''\)\)\.slice\(0, limit\)\.join\(''\)/);
+  assert.match(app, /characters\.length > limit \? `\$\{characters\.slice\(0, limit\)\.join\(''\)\}\.\.\.` : characters\.join\(''\)/);
   assert.match(app, /item\.target === 'PRACTICE'/);
   assert.match(app, /async function approveCandidate[\s\S]*selectedCandidate = null;[\s\S]*renderCandidateDetail\(\)/);
   assert.match(app, /async function loadModeration[\s\S]*renderCandidateList\(\);[\s\S]*renderCandidateDetail\(\);/);

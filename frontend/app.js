@@ -67,7 +67,8 @@
   }
 
   function firstCharacters(value, limit = 50) {
-    return Array.from(String(value || '')).slice(0, limit).join('');
+    const characters = Array.from(String(value || ''));
+    return characters.length > limit ? `${characters.slice(0, limit).join('')}...` : characters.join('');
   }
 
   function truncateText(value, limit) {
