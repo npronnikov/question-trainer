@@ -73,6 +73,14 @@ class CurriculumImporterTest {
     }
 
     @Test
+    void importsOneThreeFieldPracticeExamplePerCategory() {
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM practice_example
+                WHERE question_text <> '' AND rationale_text <> '' AND solution_text <> ''
+                """, Integer.class)).isEqualTo(7);
+    }
+
+    @Test
     void repeatedImportIsIdempotent() throws Exception {
         importer.run(new DefaultApplicationArguments(new String[0]));
 

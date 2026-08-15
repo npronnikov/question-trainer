@@ -32,13 +32,12 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class PracticeAssessmentService {
 
     private static final Logger log = LoggerFactory.getLogger(PracticeAssessmentService.class);
-    private static final List<String> ALL_FIELDS = List.of(
-            "question", "answer", "reasoning", "solution");
-    private static final Set<String> FIELDS = Set.of("question", "answer", "reasoning", "solution");
+    private static final List<String> ALL_FIELDS = List.of("question", "rationale", "solution");
+    private static final Set<String> FIELDS = Set.copyOf(ALL_FIELDS);
 
     private final PracticeRepository practice;
     private final PracticeAssessmentGateway gateway;
-    private final ModelAssessmentParser parser;
+    private final ModelAssessmentV2Parser parser;
     private final ExecutorService executor;
     private final ObjectMapper json;
     private final PracticeEventRegistry events;
@@ -47,7 +46,7 @@ public class PracticeAssessmentService {
     @Autowired
     public PracticeAssessmentService(PracticeRepository practice,
                                      PracticeAssessmentGateway gateway,
-                                     ModelAssessmentParser parser,
+                                     ModelAssessmentV2Parser parser,
                                      ExecutorService executor,
                                      ObjectMapper json,
                                      PracticeEventRegistry events) {
@@ -56,7 +55,7 @@ public class PracticeAssessmentService {
 
     PracticeAssessmentService(PracticeRepository practice,
                               PracticeAssessmentGateway gateway,
-                              ModelAssessmentParser parser,
+                              ModelAssessmentV2Parser parser,
                               ExecutorService executor,
                               ObjectMapper json,
                               PracticeEventRegistry events,
@@ -81,7 +80,7 @@ public class PracticeAssessmentService {
                         HttpStatus.NOT_FOUND, "Практика не найдена"));
         var attempt = practice.createAttempt(
                 ownerId, assignment, null,
-                input.question().strip(), input.answer().strip(), input.reasoning().strip(),
+                input.question().strip(), input.rationale().strip(),
                 input.solution().strip(), "[]", normalize(input.model()),
                 normalize(input.idempotencyKey()), OffsetDateTime.now(clock));
         practice.deleteDraft(ownerId, assignment.id());
@@ -109,7 +108,7 @@ public class PracticeAssessmentService {
                         HttpStatus.CONFLICT, "Ключ повторной отправки относится к другой попытке");
             }
             requireMatchingIdempotentPayload(existing.get(), parent, input.question(),
-                    input.answer(), input.reasoning(), input.solution(), input.model());
+                    input.rationale(), input.solution(), input.model());
             return view(existing.get());
         }
         if (!"NEEDS_REVISION".equals(parent.status())) {
@@ -122,26 +121,24 @@ public class PracticeAssessmentService {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT, "Исправлять можно только последнюю попытку");
         }
-        Set<String> allowed = new HashSet<>(read(
-                parent.fieldsToReviseJson(), new TypeReference<List<String>>() { }));
+        Set<String> allowed = new HashSet<>(revisionFields(parent));
         String question = revised("question", input.question(), parent.question(), allowed);
-        String answer = revised("answer", input.answer(), parent.answer(), allowed);
-        String reasoning = revised("reasoning", input.reasoning(), parent.reasoning(), allowed);
+        String rationale = revised("rationale", input.rationale(), parent.rationale(), allowed);
         String solution = revised("solution", input.solution(), parent.solution(), allowed);
         List<String> changed = FIELDS.stream()
                 .filter(field -> !fieldValue(field, parent).equals(fieldValue(
-                        field, question, answer, reasoning, solution)))
+                        field, question, rationale, solution)))
                 .sorted().toList();
         if (changed.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "В исправлении нет изменений");
         }
-        var submission = new Submission(parent.assignmentId(), question, answer, reasoning,
+        var submission = new Submission(parent.assignmentId(), question, rationale,
                 solution, input.model() == null ? parent.requestedModel() : input.model(),
                 key);
         validateInput(submission);
         var assignment = practice.findAssignment(ownerId, parent.assignmentId()).orElseThrow();
         var attempt = practice.createAttempt(
-                ownerId, assignment, parent.id(), question, answer, reasoning, solution,
+                ownerId, assignment, parent.id(), question, rationale, solution,
                 write(changed), normalize(submission.model()), key,
                 OffsetDateTime.now(clock));
         practice.deleteDraft(ownerId, assignment.id());
@@ -163,7 +160,7 @@ public class PracticeAssessmentService {
                         HttpStatus.CONFLICT, "Ключ повторной отправки относится к другой попытке");
             }
             requireMatchingIdempotentPayload(existing.get(), parent, input.question(),
-                    input.answer(), input.reasoning(), input.solution(), input.model());
+                    input.rationale(), input.solution(), input.model());
             return view(existing.get());
         }
         if (!"UNVERIFIED".equals(parent.status())) {
@@ -178,19 +175,18 @@ public class PracticeAssessmentService {
         }
         Set<String> allowed = Set.copyOf(editableFields(attempts));
         String question = retried("question", input.question(), parent.question(), allowed);
-        String answer = retried("answer", input.answer(), parent.answer(), allowed);
-        String reasoning = retried("reasoning", input.reasoning(), parent.reasoning(), allowed);
+        String rationale = retried("rationale", input.rationale(), parent.rationale(), allowed);
         String solution = retried("solution", input.solution(), parent.solution(), allowed);
-        var submission = new Submission(parent.assignmentId(), question, answer, reasoning,
+        var submission = new Submission(parent.assignmentId(), question, rationale,
                 solution, input.model() == null ? parent.requestedModel() : input.model(), key);
         validateInput(submission);
         List<String> changed = FIELDS.stream()
                 .filter(field -> !fieldValue(field, parent).equals(fieldValue(
-                        field, question, answer, reasoning, solution)))
+                        field, question, rationale, solution)))
                 .sorted().toList();
         var assignment = practice.findAssignment(ownerId, parent.assignmentId()).orElseThrow();
         var attempt = practice.createAttempt(
-                ownerId, assignment, parent.id(), question, answer, reasoning, solution,
+                ownerId, assignment, parent.id(), question, rationale, solution,
                 write(changed), normalize(submission.model()), key, OffsetDateTime.now(clock));
         practice.deleteDraft(ownerId, assignment.id());
         scheduleEvaluation(attempt.id());
@@ -248,11 +244,15 @@ public class PracticeAssessmentService {
         try {
             var result = gateway.assess(new PracticeAssessmentGateway.Input(
                     attempt.situation(), attempt.categoryCode(), attempt.guidance(),
-                    attempt.question(), attempt.answer(), attempt.reasoning(), attempt.solution()),
+                    attempt.question(), attempt.rationale(), attempt.solution()),
                     attempt.requestedModel());
-            ModelAssessment assessment = parser.parse(result.json(), attempt.categoryCode());
-            String status = verdict(assessment);
-            saveVerified(attempt, assessment, status, result.modelId(), elapsedMillis(started));
+            ModelAssessmentV2 assessment = parser.parse(result.json(), attempt.categoryCode());
+            AssessmentDecision decision = decide(assessment);
+            if ("UNVERIFIED".equals(decision.status())) {
+                saveLowConfidence(attempt, result.modelId(), elapsedMillis(started));
+            } else {
+                saveVerified(attempt, assessment, decision, result.modelId(), elapsedMillis(started));
+            }
         } catch (Exception error) {
             log.warn("Practice assessment {} became unverified: {}: {}",
                     attemptId, error.getClass().getSimpleName(), error.getMessage(), error);
@@ -260,38 +260,63 @@ public class PracticeAssessmentService {
         }
     }
 
-    private String verdict(ModelAssessment assessment) {
-        return "PASS".equals(assessment.completeness().status())
-                && assessment.categoryFit().score() >= 2
-                && assessment.questionStrength().score() >= 3
-                && !"LOW".equals(assessment.confidence())
-                ? "PASSED" : "NEEDS_REVISION";
+    static AssessmentDecision decide(ModelAssessmentV2 assessment) {
+        if ("LOW".equals(assessment.confidence())) {
+            return new AssessmentDecision("UNVERIFIED", List.of());
+        }
+        List<ModelAssessmentV2.StepResult> steps = assessment.chain().steps();
+        var fields = new java.util.ArrayList<String>();
+        if (!"PASS".equals(step(steps, "question").status())
+                || assessment.categoryFit().score() < 2
+                || assessment.questionStrength().score() < 3) {
+            fields.add("question");
+        }
+        if ("CONTRADICTS".equals(step(steps, "rationale").status())) {
+            fields.add("rationale");
+        }
+        if (!"PASS".equals(step(steps, "solution").status())) {
+            fields.add("solution");
+        }
+        return fields.isEmpty()
+                ? new AssessmentDecision("PASSED", List.of())
+                : new AssessmentDecision("NEEDS_REVISION", List.copyOf(fields));
+    }
+
+    private static ModelAssessmentV2.StepResult step(
+            List<ModelAssessmentV2.StepResult> steps, String field) {
+        return steps.stream().filter(item -> field.equals(item.field())).findFirst().orElseThrow();
     }
 
     private void saveVerified(PracticeRepository.AttemptRow attempt,
-                              ModelAssessment value, String status,
+                              ModelAssessmentV2 value, AssessmentDecision decision,
                               String modelId, long latency) throws JsonProcessingException {
         var correction = value.priorityCorrection();
+        String completeness = chainComplete(value) ? "PASS" : "FAIL";
         var row = new PracticeRepository.AssessmentRow(
-                UUID.randomUUID(), attempt.id(), "VERIFIED", value.completeness().status(),
-                json.writeValueAsString(value.completeness().steps()),
+                UUID.randomUUID(), attempt.id(), "VERIFIED", completeness,
+                json.writeValueAsString(value.chain().steps()),
                 value.categoryFit().score(), value.categoryFit().evidence(),
                 value.categoryFit().confusedWith(), value.questionStrength().score(),
                 json.writeValueAsString(value.questionStrength().dimensions()),
                 value.confidence(), json.writeValueAsString(value.strengths()),
                 correction.what(), correction.why(), correction.example(),
-                json.writeValueAsString(value.fieldsToRevise()), value.feedback(),
+                json.writeValueAsString(decision.fieldsToRevise()), value.feedback(),
                 modelId, latency, null, OffsetDateTime.now(clock));
-        publishIfSaved(row, status);
+        publishIfSaved(row, decision.status());
+    }
+
+    private boolean chainComplete(ModelAssessmentV2 value) {
+        return "PASS".equals(step(value.chain().steps(), "question").status())
+                && !"CONTRADICTS".equals(step(value.chain().steps(), "rationale").status())
+                && "PASS".equals(step(value.chain().steps(), "solution").status());
     }
 
     private void saveUnverified(PracticeRepository.AttemptRow attempt, Exception error, long latency) {
         String reason = error instanceof IllegalArgumentException ? "INVALID_MODEL_RESPONSE" : "MODEL_UNAVAILABLE";
         var steps = List.of(
-                new ModelAssessment.StepResult("question", "PASS", "Поле принято сервером."),
-                new ModelAssessment.StepResult("answer", "PASS", "Поле принято сервером."),
-                new ModelAssessment.StepResult("reasoning", "PASS", "Поле принято сервером."),
-                new ModelAssessment.StepResult("solution", "PASS", "Поле принято сервером."));
+                new ModelAssessmentV2.StepResult("question", "PASS", "Поле принято сервером."),
+                new ModelAssessmentV2.StepResult("rationale", "SUPPORTS", "Поле принято сервером."),
+                new ModelAssessmentV2.StepResult("solution", "PASS", "Поле принято сервером."));
         var row = new PracticeRepository.AssessmentRow(
                 UUID.randomUUID(), attempt.id(), "UNVERIFIED", "PASS", write(steps),
                 null, null, null, null, "[]", null, "[]",
@@ -299,6 +324,22 @@ public class PracticeAssessmentService {
                 "Отправьте ту же попытку на повторную проверку позднее.",
                 "[]", "Техническая семантическая оценка недоступна; сервер не присваивал баллы и не ставил зачёт.",
                 null, latency, reason, OffsetDateTime.now(clock));
+        publishIfSaved(row, "UNVERIFIED");
+    }
+
+    private void saveLowConfidence(
+            PracticeRepository.AttemptRow attempt, String modelId, long latency) {
+        var steps = List.of(
+                new ModelAssessmentV2.StepResult("question", "PASS", "Поле принято сервером."),
+                new ModelAssessmentV2.StepResult("rationale", "SUPPORTS", "Поле принято сервером."),
+                new ModelAssessmentV2.StepResult("solution", "PASS", "Поле принято сервером."));
+        var row = new PracticeRepository.AssessmentRow(
+                UUID.randomUUID(), attempt.id(), "UNVERIFIED", "PASS", write(steps),
+                null, null, null, null, "[]", null, "[]",
+                "Повторить семантическую проверку", "Уверенность модели недостаточна для зачёта",
+                "Повторите ту же попытку позднее или выберите другую модель.",
+                "[]", "Модель вернула низкую уверенность; сервер не назначил правку и не поставил зачёт.",
+                modelId, latency, "LOW_MODEL_CONFIDENCE", OffsetDateTime.now(clock));
         publishIfSaved(row, "UNVERIFIED");
     }
 
@@ -310,27 +351,58 @@ public class PracticeAssessmentService {
 
     AttemptView view(PracticeRepository.AttemptRow row) {
         AssessmentView assessment = row.outcome() == null ? null : new AssessmentView(
-                row.outcome(), row.completenessStatus(), read(row.stepResultsJson(), new TypeReference<>() { }),
+                row.outcome(), row.completenessStatus(), assessmentSteps(row),
                 row.categoryFitScore(), row.categoryFitEvidence(), row.confusedWith(),
                 row.questionStrengthScore(), read(row.strengthDimensionsJson(), new TypeReference<>() { }),
                 row.confidence(), read(row.strengthsJson(), new TypeReference<>() { }),
                 new Correction(row.correctionWhat(), row.correctionWhy(), row.correctionExample()),
-                read(row.fieldsToReviseJson(), new TypeReference<>() { }),
+                revisionFields(row),
                 row.feedback(), row.modelId(), row.failureReason());
         return new AttemptView(
                 row.id(), row.assignmentId(), row.parentAttemptId(), row.attemptNumber(),
-                row.status(), row.question(), row.answer(), row.reasoning(), row.solution(),
+                row.status(), row.question(), row.rationale(), row.solution(),
                 new Category(row.categoryCode(), row.categoryName()), assessment,
                 row.createdAt(), row.completedAt());
     }
 
+    private List<ModelAssessmentV2.StepResult> assessmentSteps(PracticeRepository.AttemptRow row) {
+        List<ModelAssessmentV2.StepResult> steps = read(row.stepResultsJson(), new TypeReference<>() { });
+        if (!ModelAssessmentParser.SCHEMA_VERSION.equals(row.schemaVersion())) return steps;
+        var question = legacyStep(steps, "question");
+        var answer = legacyStep(steps, "answer");
+        var reasoning = legacyStep(steps, "reasoning");
+        var solution = legacyStep(steps, "solution");
+        String rationaleStatus = "FAIL".equals(answer.status()) || "FAIL".equals(reasoning.status())
+                ? "CONTRADICTS" : "SUPPORTS";
+        return List.of(
+                new ModelAssessmentV2.StepResult("question", question.status(), question.evidence()),
+                new ModelAssessmentV2.StepResult("rationale", rationaleStatus,
+                        answer.evidence() + " " + reasoning.evidence()),
+                new ModelAssessmentV2.StepResult("solution", solution.status(), solution.evidence()));
+    }
+
+    private ModelAssessmentV2.StepResult legacyStep(
+            List<ModelAssessmentV2.StepResult> steps, String field) {
+        return steps.stream().filter(step -> field.equals(step.field())).findFirst()
+                .orElse(new ModelAssessmentV2.StepResult(field, "PASS", "Поле принято сервером."));
+    }
+
+    private List<String> revisionFields(PracticeRepository.AttemptRow row) {
+        List<String> stored = read(row.fieldsToReviseJson(), new TypeReference<>() { });
+        if (!ModelAssessmentParser.SCHEMA_VERSION.equals(row.schemaVersion())) return stored;
+        var normalized = new java.util.ArrayList<String>();
+        if (stored.contains("question")) normalized.add("question");
+        if (stored.contains("answer") || stored.contains("reasoning")) normalized.add("rationale");
+        if (stored.contains("solution")) normalized.add("solution");
+        return List.copyOf(normalized);
+    }
+
     private void validateInput(Submission value) {
         requireLength(value.question(), 30, "question");
-        requireLength(value.answer(), 40, "answer");
-        requireLength(value.reasoning(), 50, "reasoning");
+        requireLength(value.rationale(), 40, "rationale");
         requireLength(value.solution(), 35, "solution");
         Set<String> normalized = new HashSet<>();
-        for (String item : List.of(value.question(), value.answer(), value.reasoning(), value.solution())) {
+        for (String item : List.of(value.question(), value.rationale(), value.solution())) {
             if (!normalized.add(item.strip().toLowerCase(Locale.ROOT))) {
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "Шаги практики не должны дублировать друг друга");
@@ -369,10 +441,9 @@ public class PracticeAssessmentService {
     private void requireMatchingIdempotentPayload(
             PracticeRepository.AttemptRow existing,
             PracticeRepository.AttemptRow parent,
-            String question, String answer, String reasoning, String solution, String model) {
+            String question, String rationale, String solution, String model) {
         if (!Objects.equals(resolved(question, parent.question()), existing.question())
-                || !Objects.equals(resolved(answer, parent.answer()), existing.answer())
-                || !Objects.equals(resolved(reasoning, parent.reasoning()), existing.reasoning())
+                || !Objects.equals(resolved(rationale, parent.rationale()), existing.rationale())
                 || !Objects.equals(resolved(solution, parent.solution()), existing.solution())
                 || !Objects.equals(resolvedModel(model, parent.requestedModel()),
                         existing.requestedModel())) {
@@ -393,19 +464,16 @@ public class PracticeAssessmentService {
     private String fieldValue(String field, PracticeRepository.AttemptRow row) {
         return switch (field) {
             case "question" -> row.question();
-            case "answer" -> row.answer();
-            case "reasoning" -> row.reasoning();
+            case "rationale" -> row.rationale();
             case "solution" -> row.solution();
             default -> throw new IllegalArgumentException(field);
         };
     }
 
-    private String fieldValue(String field, String question, String answer,
-                              String reasoning, String solution) {
+    private String fieldValue(String field, String question, String rationale, String solution) {
         return switch (field) {
             case "question" -> question;
-            case "answer" -> answer;
-            case "reasoning" -> reasoning;
+            case "rationale" -> rationale;
             case "solution" -> solution;
             default -> throw new IllegalArgumentException(field);
         };
@@ -438,8 +506,7 @@ public class PracticeAssessmentService {
     public record Submission(
             UUID assignmentId,
             String question,
-            String answer,
-            String reasoning,
+            String rationale,
             String solution,
             String model,
             String idempotencyKey) {
@@ -447,8 +514,7 @@ public class PracticeAssessmentService {
 
     public record Revision(
             String question,
-            String answer,
-            String reasoning,
+            String rationale,
             String solution,
             String model,
             String idempotencyKey) {
@@ -456,8 +522,7 @@ public class PracticeAssessmentService {
 
     public record Retry(
             String question,
-            String answer,
-            String reasoning,
+            String rationale,
             String solution,
             String model,
             String idempotencyKey) {
@@ -470,8 +535,7 @@ public class PracticeAssessmentService {
             int attemptNumber,
             String status,
             String question,
-            String answer,
-            String reasoning,
+            String rationale,
             String solution,
             Category targetCategory,
             AssessmentView assessment,
@@ -485,12 +549,12 @@ public class PracticeAssessmentService {
     public record AssessmentView(
             String outcome,
             String completeness,
-            List<ModelAssessment.StepResult> steps,
+            List<ModelAssessmentV2.StepResult> steps,
             Integer categoryFitScore,
             String categoryFitEvidence,
             String confusedWith,
             Integer questionStrengthScore,
-            List<ModelAssessment.StrengthDimension> strengthDimensions,
+            List<ModelAssessmentV2.StrengthDimension> strengthDimensions,
             String confidence,
             List<String> strengths,
             Correction priorityCorrection,
@@ -501,5 +565,8 @@ public class PracticeAssessmentService {
     }
 
     public record Correction(String what, String why, String example) {
+    }
+
+    record AssessmentDecision(String status, List<String> fieldsToRevise) {
     }
 }

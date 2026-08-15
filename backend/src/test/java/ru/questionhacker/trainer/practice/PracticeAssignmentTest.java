@@ -242,9 +242,9 @@ class PracticeAssignmentTest {
         jdbc.update("""
                 INSERT INTO practice_attempt(
                   id, assignment_id, owner_id, parent_attempt_id, attempt_number,
-                  question_text, answer_text, reasoning_text, solution_text,
+                  question_text, rationale_text, solution_text,
                   revised_fields_json, status, created_at, completed_at
-                ) VALUES (?, ?, ?, NULL, 1, 'question', 'answer', 'reasoning',
+                ) VALUES (?, ?, ?, NULL, 1, 'question', 'rationale',
                           'solution', '[]', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, UUID.randomUUID(), assignmentId, ownerId, status);
     }

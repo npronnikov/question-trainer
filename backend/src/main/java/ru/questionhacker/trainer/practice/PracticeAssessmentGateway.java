@@ -9,8 +9,7 @@ public interface PracticeAssessmentGateway {
             String category,
             String guidance,
             String question,
-            String answer,
-            String reasoning,
+            String rationale,
             String solution) {
     }
 

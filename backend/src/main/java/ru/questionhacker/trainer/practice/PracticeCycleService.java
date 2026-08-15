@@ -14,8 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class PracticeCycleService {
 
-    private static final List<String> ALL_FIELDS = List.of(
-            "question", "answer", "reasoning", "solution");
+    private static final List<String> ALL_FIELDS = List.of("question", "rationale", "solution");
 
     private final PracticeRepository practice;
     private final PracticeAssignmentService assignments;
@@ -54,8 +53,8 @@ public class PracticeCycleService {
                 .listAttempts(ownerId, assignmentId).stream().map(assessments::view).toList();
         validateBase(input, attempts);
         return draftView(practice.saveDraft(
-                ownerId, assignmentId, input.baseAttemptId(), input.question(), input.answer(),
-                input.reasoning(), input.solution(), OffsetDateTime.now(ZoneOffset.UTC)));
+                ownerId, assignmentId, input.baseAttemptId(), input.question(), input.rationale(),
+                input.solution(), OffsetDateTime.now(ZoneOffset.UTC)));
     }
 
     @Transactional(readOnly = true)
@@ -63,7 +62,7 @@ public class PracticeCycleService {
         var row = practice.randomExample().orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.NOT_FOUND, "Нет опубликованного примера практики"));
         return new ExampleView(row.id(), new Category(row.categoryCode(), row.categoryName()),
-                row.domain(), row.situation(), row.question(), row.answer(), row.reasoning(),
+                row.domain(), row.situation(), row.question(), row.rationale(),
                 row.solution(), row.recommendation());
     }
 
@@ -86,8 +85,7 @@ public class PracticeCycleService {
         }
         Set<String> editable = Set.copyOf(editableFields(attempts));
         if ((!editable.contains("question") && !latest.question().equals(input.question()))
-                || (!editable.contains("answer") && !latest.answer().equals(input.answer()))
-                || (!editable.contains("reasoning") && !latest.reasoning().equals(input.reasoning()))
+                || (!editable.contains("rationale") && !latest.rationale().equals(input.rationale()))
                 || (!editable.contains("solution") && !latest.solution().equals(input.solution()))) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "Черновик изменяет поле, не отмеченное для исправления");
@@ -102,14 +100,14 @@ public class PracticeCycleService {
         if (draft != null) {
             List<String> fields = draft.baseAttemptId() == null
                     ? ALL_FIELDS : latestEditableFields(attempts, draft.baseAttemptId());
-            return new EditorView(draft.baseAttemptId(), draft.question(), draft.answer(),
-                    draft.reasoning(), draft.solution(), fields);
+            return new EditorView(draft.baseAttemptId(), draft.question(), draft.rationale(),
+                    draft.solution(), fields);
         }
-        if (attempts.isEmpty()) return new EditorView(null, "", "", "", "", ALL_FIELDS);
+        if (attempts.isEmpty()) return new EditorView(null, "", "", "", ALL_FIELDS);
         var latest = attempts.getLast();
         List<String> fields = editableFields(attempts);
-        return new EditorView(latest.attemptId(), latest.question(), latest.answer(),
-                latest.reasoning(), latest.solution(), fields);
+        return new EditorView(latest.attemptId(), latest.question(), latest.rationale(),
+                latest.solution(), fields);
     }
 
     private List<String> latestEditableFields(
@@ -126,13 +124,12 @@ public class PracticeCycleService {
     }
 
     private DraftView draftView(PracticeRepository.DraftRow row) {
-        return new DraftView(row.baseAttemptId(), row.question(), row.answer(), row.reasoning(),
+        return new DraftView(row.baseAttemptId(), row.question(), row.rationale(),
                 row.solution(), row.updatedAt());
     }
 
     public record DraftInput(
-            UUID baseAttemptId, String question, String answer,
-            String reasoning, String solution) {
+            UUID baseAttemptId, String question, String rationale, String solution) {
     }
 
     public record CycleSummary(
@@ -148,18 +145,18 @@ public class PracticeCycleService {
     }
 
     public record DraftView(
-            UUID baseAttemptId, String question, String answer, String reasoning,
+            UUID baseAttemptId, String question, String rationale,
             String solution, OffsetDateTime updatedAt) {
     }
 
     public record EditorView(
-            UUID baseAttemptId, String question, String answer, String reasoning,
+            UUID baseAttemptId, String question, String rationale,
             String solution, List<String> editableFields) {
     }
 
     public record ExampleView(
             UUID exampleId, Category targetCategory, String domain, String situation,
-            String question, String answer, String reasoning, String solution,
+            String question, String rationale, String solution,
             String recommendation) {
     }
 

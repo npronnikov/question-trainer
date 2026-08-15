@@ -90,18 +90,18 @@ class PracticeAdministrationTest {
         jdbc.update("""
                 INSERT INTO practice_draft(
                   assignment_id, owner_id, base_attempt_id, question_text,
-                  answer_text, reasoning_text, solution_text, updated_at
-                ) VALUES (?, ?, NULL, '', '', '', '', ?)
+                  rationale_text, solution_text, updated_at
+                ) VALUES (?, ?, NULL, '', '', '', ?)
                 """, draftAssignment, owner.id(), now);
 
         UUID attempt = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO practice_attempt(
                   id, assignment_id, owner_id, parent_attempt_id, attempt_number,
-                  question_text, answer_text, reasoning_text, solution_text,
+                  question_text, rationale_text, solution_text,
                   revised_fields_json, status, requested_model, idempotency_key,
                   created_at, completed_at
-                ) VALUES (?, ?, ?, NULL, 1, 'question', 'answer', 'reasoning',
+                ) VALUES (?, ?, ?, NULL, 1, 'question', 'rationale',
                           'solution', '[]', 'PASSED', 'test-model', 'cleanup-test', ?, ?)
                 """, attempt, assessedAssignment, owner.id(), now, now);
         jdbc.update("""

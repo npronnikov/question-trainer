@@ -42,7 +42,7 @@
       <p class="auth-error" id="auth-error" role="alert" aria-live="assertive"></p>
     </section>
     <aside class="auth-promise" aria-label="Принцип тренажёра">
-      <span>ВОПРОС → ОТВЕТ → РАССУЖДЕНИЕ → РЕШЕНИЕ</span>
+      <span>ВОПРОС → ОБОСНОВАНИЕ → РЕШЕНИЕ</span>
       <blockquote>«Сервер оценивает полноту, попадание в категорию и силу вопроса. Интерфейс помогает пройти путь.»</blockquote>
     </aside>
   </main>
@@ -79,7 +79,7 @@
           <div class="hero-stats" aria-label="Состав курса">
             <div><strong>7</strong><span>категорий</span></div>
             <div><strong>98</strong><span>проверенных карточек</span></div>
-            <div><strong>4</strong><span>шага практики</span></div>
+            <div><strong>3</strong><span>поля практики</span></div>
           </div>
           <div class="orbit orbit-one" aria-hidden="true">ИНВЕРСИЯ</div>
           <div class="orbit orbit-two" aria-hidden="true">10×</div>
@@ -177,22 +177,21 @@
             <div class="practice-panel" id="practice-panel">
               <div class="practice-empty" id="practice-empty">
                 <h2>Пройдите полный<br>ход мысли.</h2>
-                <div class="practice-progress practice-progress-intro" aria-label="Полный ход мысли"><span class="is-active">Вопрос</span><span>Ответ</span><span>Рассуждение</span><span>Решение</span></div>
-                <p>Сервер проверит, заполнены ли все шаги, попал ли вопрос в заданную категорию и насколько он силён внутри неё.</p>
+                <div class="practice-progress practice-progress-intro" aria-label="Полный ход мысли"><span class="is-active">Вопрос</span><span>Обоснование</span><span>Решение</span></div>
+                <p>Сервер проверит вопрос и решение, попадание в заданную категорию и то, не противоречит ли им обоснование.</p>
                 <article class="practice-example" id="practice-example" aria-live="polite">
                   <header><span class="eyebrow" id="practice-example-category">ПРИМЕР ПОЛНОГО ЦИКЛА</span><h3 id="practice-example-situation">Загружаем серверный пример…</h3></header>
                   <div class="practice-example-steps">
                     <section><span>1 / Вопрос</span><p id="practice-example-question">—</p></section>
-                    <section><span>2 / Ответ</span><p id="practice-example-answer">—</p></section>
-                    <section><span>3 / Рассуждение</span><p id="practice-example-reasoning">—</p></section>
-                    <section><span>4 / Решение</span><p id="practice-example-solution">—</p></section>
+                    <section><span>2 / Обоснование</span><p id="practice-example-rationale">—</p></section>
+                    <section><span>3 / Решение</span><p id="practice-example-solution">—</p></section>
                   </div>
                   <footer><span>Рекомендация модели</span><p id="practice-example-recommendation">—</p></footer>
                 </article>
                 <button class="primary-button" id="start-practice" type="button">Получить ситуацию <span>→</span></button>
               </div>
               <article class="practice-workspace is-hidden" id="practice-workspace">
-                <div class="practice-progress" id="practice-workspace-progress" aria-label="Этапы практики"><span>Вопрос</span><span>Ответ</span><span>Рассуждение</span><span>Решение</span></div>
+                <div class="practice-progress" id="practice-workspace-progress" aria-label="Этапы практики"><span>Вопрос</span><span>Обоснование</span><span>Решение</span></div>
                 <div class="practice-situation">
                   <span class="eyebrow" id="practice-domain">СИТУАЦИЯ</span><h2 id="practice-situation"></h2><p id="practice-guidance"></p>
                   <div class="practice-hint-disclosure">
@@ -209,9 +208,8 @@
                     <p id="practice-revision-fields"></p>
                   </div>
                   <label for="practice-question"><span>1. Вопрос</span></label><textarea id="practice-question" rows="3" maxlength="1800" required placeholder="Какой вопрос изменит исходную рамку?"></textarea>
-                  <label for="practice-answer"><span>2. Ответ</span></label><textarea id="practice-answer" rows="3" maxlength="3000" required placeholder="Дайте прямой ответ на свой вопрос"></textarea>
-                  <label for="practice-reasoning"><span>3. Рассуждение</span></label><textarea id="practice-reasoning" rows="4" maxlength="5000" required placeholder="Что следует из вопроса и ответа? Покажите цепочку вывода"></textarea>
-                  <label for="practice-solution"><span>4. Решение</span></label><textarea id="practice-solution" rows="3" maxlength="3000" required placeholder="Какое конкретное решение вы предлагаете?"></textarea>
+                  <label for="practice-rationale"><span>2. Обоснование</span></label><textarea id="practice-rationale" rows="5" maxlength="8000" required placeholder="Почему этот ответ следует из вопроса? Укажите ключевые аргументы и допущения"></textarea>
+                  <label for="practice-solution"><span>3. Решение</span></label><textarea id="practice-solution" rows="3" maxlength="3000" required placeholder="Какое конкретное решение вы предлагаете?"></textarea>
                   <p class="form-error" id="practice-error" role="alert"></p>
                   <div class="practice-submit-row"><span class="practice-form-state"><small id="practice-attempt">Попытка 1</small><small id="practice-save-status" aria-live="polite">Черновик на сервере</small></span><button class="primary-button" id="submit-practice" type="submit">Отправить на оценку <span>→</span></button></div>
                 </form>

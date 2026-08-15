@@ -89,11 +89,11 @@ class PracticeAttemptLifecycleTest {
         assertThat(terminal.path("status").asText()).isEqualTo("PASSED");
         assertThat(terminal.path("assessment").path("categoryFitScore").asInt()).isEqualTo(2);
         assertThat(terminal.path("assessment").path("questionStrengthScore").asInt()).isEqualTo(3);
-        assertThat(terminal.path("assessment").path("steps")).hasSize(4);
+        assertThat(terminal.path("assessment").path("steps")).hasSize(3);
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM practice_assessment
                 WHERE attempt_id=? AND outcome='VERIFIED'
-                  AND prompt_version=1 AND schema_version='practice-assessment-v1'
+                  AND prompt_version=2 AND schema_version='practice-assessment-v2'
                   AND model_id='test-model'
                 """, Integer.class, attempt)).isEqualTo(1);
     }
@@ -125,6 +125,24 @@ class PracticeAttemptLifecycleTest {
     }
 
     @Test
+    void lowConfidenceIsUnverifiedButKeepsModelAuditMetadata() throws Exception {
+        when(gateway.assess(any(), anyString())).thenReturn(
+                new PracticeAssessmentGateway.Result(
+                        validAssessment(3, 4, "LOW", null), "low-confidence-model"));
+        UUID attempt = submit("assessment-alice", assignment("assessment-alice"), "key-low-confidence");
+
+        JsonNode terminal = awaitTerminal("assessment-alice", attempt);
+
+        assertThat(terminal.path("status").asText()).isEqualTo("UNVERIFIED");
+        assertThat(terminal.path("assessment").has("categoryFitScore")).isFalse();
+        assertThat(terminal.path("assessment").path("modelId").asText())
+                .isEqualTo("low-confidence-model");
+        assertThat(jdbc.queryForObject("""
+                SELECT failure_reason FROM practice_assessment WHERE attempt_id=?
+                """, String.class, attempt)).isEqualTo("LOW_MODEL_CONFIDENCE");
+    }
+
+    @Test
     void unverifiedInitialAttemptCanBeEditedAndRetriedIdempotently() throws Exception {
         when(gateway.assess(any(), anyString()))
                 .thenThrow(new IllegalStateException("stopped"))
@@ -138,13 +156,13 @@ class PracticeAttemptLifecycleTest {
         mvc.perform(post("/api/practice/attempts/{id}/retries", failed)
                         .with(user("assessment-bob")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(retryBody(question(4), answer(), reasoning(), solution(), "foreign-retry")))
+                        .content(retryBody(question(4), rationale(), solution(), "foreign-retry")))
                 .andExpect(status().isNotFound());
 
         String accepted = mvc.perform(post("/api/practice/attempts/{id}/retries", failed)
                         .with(user("assessment-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(retryBody(question(4), answer(), reasoning(), solution(), "retry-same-key")))
+                        .content(retryBody(question(4), rationale(), solution(), "retry-same-key")))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.parentAttemptId").value(failed.toString()))
                 .andExpect(jsonPath("$.attemptNumber").value(2))
@@ -155,13 +173,13 @@ class PracticeAttemptLifecycleTest {
         mvc.perform(post("/api/practice/attempts/{id}/retries", failed)
                         .with(user("assessment-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(retryBody(question(4), answer(), reasoning(), solution(), "retry-same-key")))
+                        .content(retryBody(question(4), rationale(), solution(), "retry-same-key")))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.attemptId").value(retried.toString()));
         mvc.perform(post("/api/practice/attempts/{id}/retries", failed)
                         .with(user("assessment-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(retryBody(question(5), answer(), reasoning(), solution(), "retry-same-key")))
+                        .content(retryBody(question(5), rationale(), solution(), "retry-same-key")))
                 .andExpect(status().isConflict());
         mvc.perform(post("/api/practice/attempts/{id}/retries", failed)
                         .with(user("assessment-alice")).with(csrf())
@@ -171,17 +189,17 @@ class PracticeAttemptLifecycleTest {
         mvc.perform(post("/api/practice/attempts/{id}/retries", UUID.randomUUID())
                         .with(user("assessment-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(retryBody(question(4), answer(), reasoning(), solution(), "retry-same-key")))
+                        .content(retryBody(question(4), rationale(), solution(), "retry-same-key")))
                 .andExpect(status().isNotFound());
         mvc.perform(post("/api/practice/attempts/{id}/retries", retried)
                         .with(user("assessment-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(retryBody(question(4), answer(), reasoning(), solution(), "retry-same-key")))
+                        .content(retryBody(question(4), rationale(), solution(), "retry-same-key")))
                 .andExpect(status().isConflict());
         mvc.perform(post("/api/practice/attempts/{id}/retries", failed)
                         .with(user("assessment-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(retryBody(question(4), answer(), reasoning(), solution(), "stale-parent")))
+                        .content(retryBody(question(4), rationale(), solution(), "stale-parent")))
                 .andExpect(status().isConflict());
 
         assertThat(awaitTerminal("assessment-alice", retried).path("status").asText())
@@ -189,7 +207,7 @@ class PracticeAttemptLifecycleTest {
         mvc.perform(post("/api/practice/attempts/{id}/retries", retried)
                         .with(user("assessment-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(retryBody(question(4), answer(), reasoning(), solution(), "passed-retry")))
+                        .content(retryBody(question(4), rationale(), solution(), "passed-retry")))
                 .andExpect(status().isConflict());
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM practice_attempt WHERE assignment_id=?",
@@ -227,24 +245,24 @@ class PracticeAttemptLifecycleTest {
         mvc.perform(put("/api/practice/cycles/{id}/draft", assignment)
                         .with(user("assessment-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(draftBody(failedRevision, question(5), answer())))
+                        .content(draftBody(failedRevision, question(5), rationale())))
                 .andExpect(status().isOk());
         mvc.perform(put("/api/practice/cycles/{id}/draft", assignment)
                         .with(user("assessment-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(draftBody(failedRevision, question(5), answer() + " Изменение.")))
+                        .content(draftBody(failedRevision, question(5), rationale() + " Изменение.")))
                 .andExpect(status().isBadRequest());
         mvc.perform(post("/api/practice/attempts/{id}/retries", failedRevision)
                         .with(user("assessment-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(retryBody(question(5), answer() + " Изменение.", reasoning(), solution(),
+                        .content(retryBody(question(5), rationale() + " Изменение.", solution(),
                                 "blocked-field")))
                 .andExpect(status().isBadRequest());
 
         String retryResponse = mvc.perform(post("/api/practice/attempts/{id}/retries", failedRevision)
                         .with(user("assessment-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(retryBody(question(5), answer(), reasoning(), solution(), "scope-retry")))
+                        .content(retryBody(question(5), rationale(), solution(), "scope-retry")))
                 .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
         UUID failedRetry = UUID.fromString(json.readTree(retryResponse).path("attemptId").asText());
@@ -255,7 +273,7 @@ class PracticeAttemptLifecycleTest {
         String unchangedResponse = mvc.perform(post("/api/practice/attempts/{id}/retries", failedRetry)
                         .with(user("assessment-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(retryBody(question(5), answer(), reasoning(), solution(), "unchanged-retry")))
+                        .content(retryBody(question(5), rationale(), solution(), "unchanged-retry")))
                 .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
         UUID unchangedRetry = UUID.fromString(
@@ -269,7 +287,7 @@ class PracticeAttemptLifecycleTest {
         when(gateway.assess(any(), anyString())).thenReturn(
                 new PracticeAssessmentGateway.Result(
                         validAssessment(1, 3, "HIGH", null)
-                                .replace("[\"question\"]", "[\"unknown\"]"),
+                                .replace("\"feedback\"", "\"fieldsToRevise\":[],\"feedback\""),
                         "test-model"));
         Logger logger = (Logger) LoggerFactory.getLogger(PracticeAssessmentService.class);
         var appender = new ListAppender<ILoggingEvent>();
@@ -283,9 +301,9 @@ class PracticeAttemptLifecycleTest {
             ILoggingEvent warning = appender.list.stream()
                     .filter(event -> event.getFormattedMessage().contains(attempt.toString()))
                     .findFirst().orElseThrow();
-            assertThat(warning.getFormattedMessage()).contains("unknown revision field");
+            assertThat(warning.getFormattedMessage()).contains("Invalid assessment JSON");
             assertThat(warning.getThrowableProxy()).isNotNull();
-            assertThat(warning.getThrowableProxy().getMessage()).isEqualTo("unknown revision field");
+            assertThat(warning.getThrowableProxy().getMessage()).isEqualTo("Invalid assessment JSON");
         } finally {
             logger.detachAppender(appender);
             appender.stop();
@@ -298,8 +316,8 @@ class PracticeAttemptLifecycleTest {
         String duplicate = "Одинаковый текст шага достаточно длинный для базовой проверки формы.";
         String body = json.createObjectNode()
                 .put("assignmentId", assignment.toString())
-                .put("question", duplicate).put("answer", duplicate)
-                .put("reasoning", duplicate).put("solution", duplicate)
+                .put("question", duplicate).put("rationale", duplicate)
+                .put("solution", duplicate)
                 .put("idempotencyKey", "key-duplicate").toString();
 
         mvc.perform(post("/api/practice/attempts")
@@ -307,6 +325,50 @@ class PracticeAttemptLifecycleTest {
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest());
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM practice_attempt", Integer.class)).isZero();
+    }
+
+    @Test
+    void legacyFourStepAssessmentIsExposedAsThreeFieldHistory() throws Exception {
+        UUID assignment = assignment("assessment-alice");
+        UUID owner = jdbc.queryForObject(
+                "SELECT id FROM app_user WHERE username='assessment-alice'", UUID.class);
+        UUID attempt = UUID.randomUUID();
+        jdbc.update("DELETE FROM practice_draft WHERE assignment_id=?", assignment);
+        jdbc.update("""
+                INSERT INTO practice_attempt(
+                  id, assignment_id, owner_id, parent_attempt_id, attempt_number,
+                  question_text, rationale_text, solution_text, revised_fields_json,
+                  status, requested_model, idempotency_key, created_at, completed_at
+                ) VALUES (?, ?, ?, NULL, 1, 'Вопрос', 'Обоснование', 'Решение', '[]',
+                          'NEEDS_REVISION', 'legacy-model', 'legacy-attempt',
+                          CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, attempt, assignment, owner);
+        jdbc.update("""
+                INSERT INTO practice_assessment(
+                  id, attempt_id, outcome, completeness_status, step_results_json,
+                  category_fit_score, category_fit_evidence, confused_with,
+                  question_strength_score, strength_dimensions_json, confidence,
+                  strengths_json, correction_what, correction_why, correction_example,
+                  fields_to_revise_json, feedback_text, prompt_key, prompt_version,
+                  schema_version, model_id, latency_ms, failure_reason, created_at
+                ) VALUES (?, ?, 'VERIFIED', 'FAIL', ?, 2, 'fits', NULL,
+                          3, '[]', 'HIGH', '[]', 'Исправить', 'Причина', 'Пример',
+                          '["reasoning"]', 'Legacy feedback', 'practice-assessment', 1,
+                          'practice-assessment-v1', 'legacy-model', 1, NULL, CURRENT_TIMESTAMP)
+                """, UUID.randomUUID(), attempt, """
+                [{"field":"question","status":"PASS","evidence":"q"},
+                 {"field":"answer","status":"PASS","evidence":"a"},
+                 {"field":"reasoning","status":"FAIL","evidence":"r"},
+                 {"field":"solution","status":"PASS","evidence":"s"}]
+                """);
+
+        mvc.perform(get("/api/practice/attempts/{id}", attempt)
+                        .with(user("assessment-alice")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assessment.steps.length()").value(3))
+                .andExpect(jsonPath("$.assessment.steps[1].field").value("rationale"))
+                .andExpect(jsonPath("$.assessment.steps[1].status").value("CONTRADICTS"))
+                .andExpect(jsonPath("$.assessment.fieldsToRevise[0]").value("rationale"));
     }
 
     @Test
@@ -338,15 +400,14 @@ class PracticeAttemptLifecycleTest {
         mvc.perform(post("/api/practice/attempts/{id}/revisions", original)
                         .with(user("assessment-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"answer\":\"Нельзя незаметно менять сильный шаг, который сервер не отметил для исправления.\",\"idempotencyKey\":\"bad-revision\"}"))
+                        .content("{\"rationale\":\"Нельзя незаметно менять сильный шаг, который сервер не отметил для исправления.\",\"idempotencyKey\":\"bad-revision\"}"))
                 .andExpect(status().isBadRequest());
 
         String revisedQuestion = "Какие три наблюдаемых действия гарантированно приведут запуск к провалу за неделю?";
         String draft = json.createObjectNode()
                 .put("baseAttemptId", original.toString())
                 .put("question", revisedQuestion)
-                .put("answer", "Провал создадут размытый владелец результата, поздняя проверка и скрытые риски.")
-                .put("reasoning", "Если обратить причины провала, получаем раннего владельца, быстрый тест и открытый реестр рисков.")
+                .put("rationale", rationale())
                 .put("solution", "Назначить владельца и провести недельный тест с реестром трёх главных рисков.")
                 .toString();
         mvc.perform(put("/api/practice/cycles/{id}/draft", assignment)
@@ -455,8 +516,7 @@ class PracticeAttemptLifecycleTest {
         String body = json.createObjectNode()
                 .put("assignmentId", assignment.toString())
                 .put("question", "Какие три действия гарантированно приведут этот запуск к провалу?")
-                .put("answer", "Провал создадут размытый владелец результата, поздняя проверка и скрытые риски.")
-                .put("reasoning", "Если обратить причины провала, получаем раннего владельца, быстрый тест и открытый реестр рисков.")
+                .put("rationale", rationale())
                 .put("solution", "Назначить владельца и провести недельный тест с реестром трёх главных рисков.")
                 .put("model", "gpt-5.6-terra[high]")
                 .put("idempotencyKey", key).toString();
@@ -498,32 +558,28 @@ class PracticeAttemptLifecycleTest {
                 .andExpect(jsonPath("$.editor.editableFields[0]").value("question"));
     }
 
-    private String retryBody(String question, String answer, String reasoning,
-                             String solution, String key) {
+    private String retryBody(String question, String rationale, String solution, String key) {
         return json.createObjectNode()
-                .put("question", question).put("answer", answer)
-                .put("reasoning", reasoning).put("solution", solution)
+                .put("question", question).put("rationale", rationale)
+                .put("solution", solution)
                 .put("model", "gpt-5.6-terra[high]")
                 .put("idempotencyKey", key).toString();
     }
 
-    private String draftBody(UUID baseAttempt, String question, String answer) {
+    private String draftBody(UUID baseAttempt, String question, String rationale) {
         return json.createObjectNode()
                 .put("baseAttemptId", baseAttempt.toString())
-                .put("question", question).put("answer", answer)
-                .put("reasoning", reasoning()).put("solution", solution()).toString();
+                .put("question", question).put("rationale", rationale)
+                .put("solution", solution()).toString();
     }
 
     private String question(int actions) {
         return "Какие " + actions + " наблюдаемых действия гарантированно приведут запуск к провалу за неделю?";
     }
 
-    private String answer() {
-        return "Провал создадут размытый владелец результата, поздняя проверка и скрытые риски.";
-    }
-
-    private String reasoning() {
-        return "Если обратить причины провала, получаем раннего владельца, быстрый тест и открытый реестр рисков.";
+    private String rationale() {
+        return "Провал создадут размытый владелец результата, поздняя проверка и скрытые риски. "
+                + "Если обратить причины провала, получаем раннего владельца, быстрый тест и открытый реестр рисков.";
     }
 
     private String solution() {
@@ -531,16 +587,12 @@ class PracticeAttemptLifecycleTest {
     }
 
     private String validAssessment(int fit, int strength, String confidence, String verdict) {
-        String fields = fit >= 2 && strength >= 3 && !"LOW".equals(confidence)
-                ? "[]" : "[\"question\"]";
-        String prefix = verdict == null ? "" : "\"verdict\":\"" + verdict + "\",";
         return """
-                {%s
-                  "schemaVersion":"practice-assessment-v1",
-                  "completeness":{"status":"PASS","steps":[
+                {
+                  "schemaVersion":"practice-assessment-v2",
+                  "chain":{"steps":[
                     {"field":"question","status":"PASS","evidence":"Названы три действия провала"},
-                    {"field":"answer","status":"PASS","evidence":"Перечислены причины провала"},
-                    {"field":"reasoning","status":"PASS","evidence":"Причины обращены в профилактику"},
+                    {"field":"rationale","status":"SUPPORTS","evidence":"Причины обращены в профилактику"},
                     {"field":"solution","status":"PASS","evidence":"Предложен недельный тест"}
                   ]},
                   "categoryFit":{"score":%d,"evidence":"Вопрос ищет способы провала и обращает их","confusedWith":null},
@@ -552,8 +604,8 @@ class PracticeAttemptLifecycleTest {
                   ]},
                   "confidence":"%s","strengths":["Ясная инверсия"],
                   "priorityCorrection":{"what":"Уточнить измеримость","why":"Так проверка станет точнее","example":"Какие три наблюдаемых действия?"},
-                  "fieldsToRevise":%s,"feedback":"Цепочка оценена по трём независимым проверкам."
+                  "feedback":"Цепочка оценена по трём независимым проверкам."
                 }
-                """.formatted(prefix, fit, strength, strength == 4, confidence, fields);
+                """.formatted(fit, strength, strength == 4, confidence);
     }
 }

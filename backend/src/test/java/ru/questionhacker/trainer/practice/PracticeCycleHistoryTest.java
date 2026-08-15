@@ -91,8 +91,7 @@ class PracticeCycleHistoryTest {
         String body = json.createObjectNode()
                 .putNull("baseAttemptId")
                 .put("question", question)
-                .put("answer", "Пока это сохранённый ответ пользователя без отправки на оценку.")
-                .put("reasoning", "Черновик хранит развёрнутую цепочку рассуждения на стороне сервера.")
+                .put("rationale", "Черновик хранит развёрнутое обоснование ответа пользователя на стороне сервера.")
                 .put("solution", "Вернуться к циклу после перезагрузки и продолжить работу.")
                 .toString();
         mvc.perform(put("/api/practice/cycles/{id}/draft", newer)
@@ -105,7 +104,7 @@ class PracticeCycleHistoryTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.draft.question").value(question))
                 .andExpect(jsonPath("$.editor.question").value(question))
-                .andExpect(jsonPath("$.editor.editableFields.length()").value(4))
+                .andExpect(jsonPath("$.editor.editableFields.length()").value(3))
                 .andExpect(jsonPath("$.attempts").isEmpty());
         mvc.perform(get("/api/practice/cycles").with(user("history-alice")))
                 .andExpect(jsonPath("$[0].assignmentId").value(newer.toString()))
@@ -127,8 +126,7 @@ class PracticeCycleHistoryTest {
                 .andExpect(jsonPath("$.targetCategory.name").value("Backcasting"))
                 .andExpect(jsonPath("$.situation").isNotEmpty())
                 .andExpect(jsonPath("$.question").isNotEmpty())
-                .andExpect(jsonPath("$.answer").isNotEmpty())
-                .andExpect(jsonPath("$.reasoning").isNotEmpty())
+                .andExpect(jsonPath("$.rationale").isNotEmpty())
                 .andExpect(jsonPath("$.solution").isNotEmpty())
                 .andExpect(jsonPath("$.recommendation").isNotEmpty())
                 .andReturn().getResponse().getContentAsString();
@@ -174,9 +172,9 @@ class PracticeCycleHistoryTest {
         jdbc.update("""
                 INSERT INTO practice_attempt(
                   id, assignment_id, owner_id, parent_attempt_id, attempt_number,
-                  question_text, answer_text, reasoning_text, solution_text,
+                  question_text, rationale_text, solution_text,
                   revised_fields_json, status, created_at, completed_at
-                ) VALUES (?, ?, ?, NULL, 1, 'question', 'answer', 'reasoning',
+                ) VALUES (?, ?, ?, NULL, 1, 'question', 'rationale',
                           'solution', '[]', 'PASSED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, UUID.randomUUID(), assignmentId, ownerId);
     }

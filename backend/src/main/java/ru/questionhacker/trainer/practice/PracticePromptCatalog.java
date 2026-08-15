@@ -18,16 +18,16 @@ import org.springframework.stereotype.Component;
 public class PracticePromptCatalog implements ApplicationRunner {
 
     public static final String PROMPT_KEY = "practice-assessment";
-    public static final int PROMPT_VERSION = 1;
+    public static final int PROMPT_VERSION = 2;
 
     private final JdbcTemplate jdbc;
     private final String template;
-    private final String hash;
+    private final String legacyTemplate;
 
     public PracticePromptCatalog(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
-        this.template = read("prompts/practice-assessment-v1.md");
-        this.hash = sha256(template);
+        this.template = read("prompts/practice-assessment-v2.md");
+        this.legacyTemplate = read("prompts/practice-assessment-v1.md");
     }
 
     @Override
@@ -35,9 +35,15 @@ public class PracticePromptCatalog implements ApplicationRunner {
         jdbc.update("""
                 MERGE INTO prompt_version(
                   prompt_key, version_number, schema_version, content_hash, active, created_at
+                ) KEY(prompt_key, version_number) VALUES (?, 1, ?, ?, FALSE, ?)
+                """, PROMPT_KEY, ModelAssessmentParser.SCHEMA_VERSION,
+                sha256(legacyTemplate), OffsetDateTime.now(ZoneOffset.UTC));
+        jdbc.update("""
+                MERGE INTO prompt_version(
+                  prompt_key, version_number, schema_version, content_hash, active, created_at
                 ) KEY(prompt_key, version_number) VALUES (?, ?, ?, ?, TRUE, ?)
-                """, PROMPT_KEY, PROMPT_VERSION, ModelAssessmentParser.SCHEMA_VERSION,
-                hash, OffsetDateTime.now(ZoneOffset.UTC));
+                """, PROMPT_KEY, PROMPT_VERSION, ModelAssessmentV2Parser.SCHEMA_VERSION,
+                sha256(template), OffsetDateTime.now(ZoneOffset.UTC));
     }
 
     public String render(PracticeAssessmentGateway.Input input) {
@@ -46,8 +52,7 @@ public class PracticePromptCatalog implements ApplicationRunner {
                 .replace("{{category}}", input.category())
                 .replace("{{guidance}}", input.guidance())
                 .replace("{{question}}", input.question())
-                .replace("{{answer}}", input.answer())
-                .replace("{{reasoning}}", input.reasoning())
+                .replace("{{rationale}}", input.rationale())
                 .replace("{{solution}}", input.solution());
     }
 

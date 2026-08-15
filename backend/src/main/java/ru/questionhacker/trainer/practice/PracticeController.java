@@ -56,8 +56,8 @@ public class PracticeController {
             @Valid @RequestBody DraftRequest request) {
         return cycles.saveDraft(auth.requireCurrentUser().id(), assignmentId,
                 new PracticeCycleService.DraftInput(
-                        request.baseAttemptId(), request.question(), request.answer(),
-                        request.reasoning(), request.solution()));
+                        request.baseAttemptId(), request.question(), request.rationale(),
+                        request.solution()));
     }
 
     @GetMapping("/examples/random")
@@ -83,8 +83,8 @@ public class PracticeController {
     public PracticeAssessmentService.AttemptView submitAttempt(@Valid @RequestBody AttemptRequest request) {
         return assessments.submit(auth.requireCurrentUser().id(),
                 new PracticeAssessmentService.Submission(
-                        request.assignmentId(), request.question(), request.answer(),
-                        request.reasoning(), request.solution(), request.model(),
+                        request.assignmentId(), request.question(), request.rationale(),
+                        request.solution(), request.model(),
                         request.idempotencyKey()));
     }
 
@@ -100,7 +100,7 @@ public class PracticeController {
             @Valid @RequestBody RevisionRequest request) {
         return assessments.revise(auth.requireCurrentUser().id(), attemptId,
                 new PracticeAssessmentService.Revision(
-                        request.question(), request.answer(), request.reasoning(),
+                        request.question(), request.rationale(),
                         request.solution(), request.model(), request.idempotencyKey()));
     }
 
@@ -111,7 +111,7 @@ public class PracticeController {
             @Valid @RequestBody RetryRequest request) {
         return assessments.retry(auth.requireCurrentUser().id(), attemptId,
                 new PracticeAssessmentService.Retry(
-                        request.question(), request.answer(), request.reasoning(),
+                        request.question(), request.rationale(),
                         request.solution(), request.model(), request.idempotencyKey()));
     }
 
@@ -127,8 +127,7 @@ public class PracticeController {
     public record AttemptRequest(
             @NotNull UUID assignmentId,
             @NotBlank @Size(max = 1800) String question,
-            @NotBlank @Size(max = 3000) String answer,
-            @NotBlank @Size(max = 5000) String reasoning,
+            @NotBlank @Size(max = 8000) String rationale,
             @NotBlank @Size(max = 3000) String solution,
             @Size(max = 120) String model,
             @Size(max = 100) String idempotencyKey) {
@@ -136,8 +135,7 @@ public class PracticeController {
 
     public record RevisionRequest(
             @Size(max = 1800) String question,
-            @Size(max = 3000) String answer,
-            @Size(max = 5000) String reasoning,
+            @Size(max = 8000) String rationale,
             @Size(max = 3000) String solution,
             @Size(max = 120) String model,
             @Size(max = 100) String idempotencyKey) {
@@ -145,8 +143,7 @@ public class PracticeController {
 
     public record RetryRequest(
             @Size(max = 1800) String question,
-            @Size(max = 3000) String answer,
-            @Size(max = 5000) String reasoning,
+            @Size(max = 8000) String rationale,
             @Size(max = 3000) String solution,
             @Size(max = 120) String model,
             @Size(max = 100) String idempotencyKey) {
@@ -155,8 +152,7 @@ public class PracticeController {
     public record DraftRequest(
             UUID baseAttemptId,
             @NotNull @Size(max = 1800) String question,
-            @NotNull @Size(max = 3000) String answer,
-            @NotNull @Size(max = 5000) String reasoning,
+            @NotNull @Size(max = 8000) String rationale,
             @NotNull @Size(max = 3000) String solution) {
     }
 }

@@ -86,7 +86,8 @@ H2 создаёт файл `backend/data/question-hacker.mv.db`. Консоль 
 
 - `backend/src/main/resources/prompts/training-coach.md`
 - `backend/src/main/resources/prompts/scenario-candidates-cycled-v1.md`
-- `backend/src/main/resources/prompts/practice-assessment-v1.md`
+- `backend/src/main/resources/prompts/practice-assessment-v2.md` — активная трёхпольная оценка
+- `backend/src/main/resources/prompts/practice-assessment-v1.md` — legacy-схема для чтения истории
 
 Промпты загружаются как ресурсы и не зашиты в Java-код.
 
@@ -113,11 +114,13 @@ H2 создаёт файл `backend/data/question-hacker.mv.db`. Консоль 
 - `GET /api/practice/cycles` и `GET /api/practice/cycles/{assignmentId}` — персональная история и полный timeline цикла
 - `PUT /api/practice/cycles/{assignmentId}/draft` — серверное автосохранение черновика
 - `GET /api/practice/examples/random` — случайный опубликованный пример полного цикла
-- `POST /api/practice/attempts`, `GET /api/practice/attempts/{id}` и `POST /api/practice/attempts/{id}/revisions`
+- `POST /api/practice/attempts`, `GET /api/practice/attempts/{id}`, `POST /api/practice/attempts/{id}/revisions` и `POST /api/practice/attempts/{id}/retries`
 - `GET /api/practice/attempts/{id}/events` — SSE статуса оценки
 - `/api/admin/scenario-candidates/**` — ACP-генерация, просмотр, правка, отказ и публикация (только ADMIN)
 
-У каждого пользователя свой цикл категорий `1…7 → 1…7`. Новая ситуация выдаётся только после `PASSED` по текущей, а уже пройденный этим пользователем сценарий не повторяется. Встроенные сценарии программы используются тренажёром, но не входят в каталог «Практики». Если для следующей категории нет нового опубликованного кандидата, API возвращает `PRACTICE_CATALOG_EXHAUSTED`, и интерфейс просит дождаться публикации администратора.
+У каждого пользователя свой цикл категорий `1…7 → 1…7`; уже пройденный этим пользователем сценарий не повторяется. Незавершённые циклы остаются в истории и не мешают запросить новую ситуацию. Встроенные сценарии программы используются тренажёром, но не входят в каталог «Практики». Если для следующей категории нет нового опубликованного кандидата, API возвращает `PRACTICE_CATALOG_EXHAUSTED`, и интерфейс просит дождаться публикации администратора.
+
+Попытка практики состоит из трёх полей: `question`, `rationale`, `solution`. Сервер отдельно проверяет вопрос и решение, соответствие вопроса целевой категории и силу вопроса. Обоснование служит проверкой связности: `WEAK` даёт рекомендацию, но не блокирует зачёт; только `CONTRADICTS` требует исправления. Поля для исправления вычисляет backend, поэтому модель не может самостоятельно поставить зачёт или расширить область редактирования. При низкой уверенности модели попытка получает `UNVERIFIED` без семантических баллов и может быть отправлена повторно.
 
 ## Структура данных
 

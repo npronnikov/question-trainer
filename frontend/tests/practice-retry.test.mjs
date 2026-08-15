@@ -17,7 +17,7 @@ test('an ambiguous retry failure reuses the same key and payload', async () => {
     }
   });
   const firstValues = {
-    question: 'Вопрос', answer: 'Ответ', reasoning: 'Рассуждение', solution: 'Решение'
+    question: 'Вопрос', rationale: 'Обоснование', solution: 'Решение'
   };
 
   await assert.rejects(
@@ -49,7 +49,7 @@ test('a completed logical retry gets a new idempotency key', async () => {
       return { attemptId: `child-${bodies.length}` };
     }
   });
-  const values = { question: 'Q', answer: 'A', reasoning: 'R', solution: 'S' };
+  const values = { question: 'Q', rationale: 'R', solution: 'S' };
 
   await submitter.submit({ attemptId: 'parent-1', values, model: 'model-a' });
   await submitter.submit({ attemptId: 'parent-2', values, model: 'model-a' });
@@ -70,7 +70,7 @@ test('a definite client rejection allows corrected input with a new key', async 
       return { attemptId: 'corrected-child' };
     }
   });
-  const values = { question: 'Q', answer: 'A', reasoning: 'R', solution: 'S' };
+  const values = { question: 'Q', rationale: 'R', solution: 'S' };
 
   await assert.rejects(
     submitter.submit({ attemptId: 'parent', values, model: 'model-a' }),

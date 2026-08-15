@@ -6,7 +6,7 @@
   const TERMINAL_ATTEMPT_STATUSES = new Set(['PASSED', 'NEEDS_REVISION', 'UNVERIFIED']);
   const PRACTICE_CATALOG_EXHAUSTED = 'PRACTICE_CATALOG_EXHAUSTED';
   const PRACTICE_EXHAUSTED_MESSAGE = 'Вы прошли все доступные ситуации. Дождитесь, пока администратор добавит новые.';
-  const FIELD_LABELS = { question: 'Вопрос', answer: 'Ответ', reasoning: 'Рассуждение', solution: 'Решение' };
+  const FIELD_LABELS = { question: 'Вопрос', rationale: 'Обоснование', solution: 'Решение' };
   const STATUS_LABELS = {
     PENDING_REVIEW: 'На проверке', AUTO_REJECTED: 'Автоотказ',
     REJECTED: 'Отклонено', PUBLISHED: 'Опубликовано'
@@ -901,7 +901,7 @@
   }
 
   function validatePractice(values, revisionFields = null) {
-    const minimums = { question: 30, answer: 40, reasoning: 50, solution: 35 };
+    const minimums = { question: 30, rationale: 40, solution: 35 };
     const fields = revisionFields?.length ? revisionFields : Object.keys(FIELD_LABELS);
     for (const field of fields) {
       if (values[field].length < minimums[field]) return `${FIELD_LABELS[field]}: нужно не менее ${minimums[field]} содержательных символов.`;
@@ -992,8 +992,8 @@
     const panel = $('#practice-feedback');
     panel.classList.remove('is-hidden', 'passed');
     panel.classList.toggle('passed', passed);
-    const fit = assessment.categoryFitScore == null ? '—' : `${assessment.categoryFitScore}/2`;
-    const strength = assessment.questionStrengthScore == null ? '—' : `${assessment.questionStrengthScore}/5`;
+    const fit = assessment.categoryFitScore == null ? '—' : `${assessment.categoryFitScore}/3`;
+    const strength = assessment.questionStrengthScore == null ? '—' : `${assessment.questionStrengthScore}/4`;
     panel.innerHTML = `
       <div class="feedback-verdict">${passed ? 'Зачёт' : unverified ? 'Не проверено' : 'Нужна корректировка'} · ${escapeHtml(attempt.targetCategory.name)}</div>
       <h3>${passed ? 'Полный ход мысли принят.' : unverified ? 'Сервер не стал выдумывать оценку.' : 'Исправьте отмеченные шаги.'}</h3>

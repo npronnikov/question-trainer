@@ -162,15 +162,15 @@ public class PracticeRepository {
         jdbc.update("""
                 INSERT INTO practice_draft(
                   assignment_id, owner_id, base_attempt_id, question_text,
-                  answer_text, reasoning_text, solution_text, updated_at
-                ) VALUES (?, ?, NULL, '', '', '', '', ?)
+                  rationale_text, solution_text, updated_at
+                ) VALUES (?, ?, NULL, '', '', '', ?)
                 """, assignmentId, ownerId, now);
     }
 
     public Optional<DraftRow> findDraft(UUID ownerId, UUID assignmentId) {
         return jdbc.query("""
                 SELECT assignment_id, owner_id, base_attempt_id, question_text,
-                       answer_text, reasoning_text, solution_text, updated_at
+                       rationale_text, solution_text, updated_at
                 FROM practice_draft
                 WHERE owner_id=? AND assignment_id=?
                 """, (rs, row) -> new DraftRow(
@@ -178,22 +178,21 @@ public class PracticeRepository {
                 rs.getObject("owner_id", UUID.class),
                 rs.getObject("base_attempt_id", UUID.class),
                 rs.getString("question_text"),
-                rs.getString("answer_text"),
-                rs.getString("reasoning_text"),
+                rs.getString("rationale_text"),
                 rs.getString("solution_text"),
                 rs.getObject("updated_at", OffsetDateTime.class)), ownerId, assignmentId)
                 .stream().findFirst();
     }
 
     public DraftRow saveDraft(UUID ownerId, UUID assignmentId, UUID baseAttemptId,
-                              String question, String answer, String reasoning, String solution,
+                              String question, String rationale, String solution,
                               OffsetDateTime now) {
         jdbc.update("""
                 MERGE INTO practice_draft(
                   assignment_id, owner_id, base_attempt_id, question_text,
-                  answer_text, reasoning_text, solution_text, updated_at
-                ) KEY(assignment_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, assignmentId, ownerId, baseAttemptId, question, answer, reasoning, solution, now);
+                  rationale_text, solution_text, updated_at
+                ) KEY(assignment_id) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, assignmentId, ownerId, baseAttemptId, question, rationale, solution, now);
         return findDraft(ownerId, assignmentId).orElseThrow();
     }
 
@@ -206,7 +205,7 @@ public class PracticeRepository {
         return jdbc.query("""
                 SELECT example.id, example.category_code, category.name AS category_name,
                        example.domain_text, example.situation_text, example.question_text,
-                       example.answer_text, example.reasoning_text, example.solution_text,
+                       example.rationale_text, example.solution_text,
                        example.recommendation_text
                 FROM practice_example example
                 JOIN category category ON category.code=example.category_code
@@ -220,8 +219,7 @@ public class PracticeRepository {
                 rs.getString("domain_text"),
                 rs.getString("situation_text"),
                 rs.getString("question_text"),
-                rs.getString("answer_text"),
-                rs.getString("reasoning_text"),
+                rs.getString("rationale_text"),
                 rs.getString("solution_text"),
                 rs.getString("recommendation_text"))).stream().findFirst();
     }
@@ -233,7 +231,7 @@ public class PracticeRepository {
     }
 
     public AttemptRow createAttempt(UUID ownerId, AssignmentRow assignment, UUID parentAttemptId,
-                                    String question, String answer, String reasoning, String solution,
+                                    String question, String rationale, String solution,
                                     String revisedFieldsJson, String requestedModel,
                                     String idempotencyKey, OffsetDateTime now) {
         Integer current = jdbc.queryForObject("""
@@ -245,11 +243,11 @@ public class PracticeRepository {
         jdbc.update("""
                 INSERT INTO practice_attempt(
                   id, assignment_id, owner_id, parent_attempt_id, attempt_number,
-                  question_text, answer_text, reasoning_text, solution_text,
+                  question_text, rationale_text, solution_text,
                   revised_fields_json, status, requested_model, idempotency_key, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'EVALUATING', ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'EVALUATING', ?, ?, ?)
                 """, id, assignment.id(), ownerId, parentAttemptId, attemptNumber,
-                question, answer, reasoning, solution, revisedFieldsJson,
+                question, rationale, solution, revisedFieldsJson,
                 requestedModel, idempotencyKey, now);
         return findAttempt(ownerId, id).orElseThrow();
     }
@@ -265,8 +263,8 @@ public class PracticeRepository {
     private List<AttemptRow> queryAttempts(String where, Object... args) {
         return jdbc.query("""
                 SELECT pa.id, pa.assignment_id, pa.owner_id, pa.parent_attempt_id,
-                       pa.attempt_number, pa.question_text, pa.answer_text,
-                       pa.reasoning_text, pa.solution_text, pa.revised_fields_json,
+                       pa.attempt_number, pa.question_text, pa.rationale_text,
+                       pa.solution_text, pa.revised_fields_json,
                        pa.status, pa.requested_model, pa.idempotency_key,
                        pa.created_at, pa.completed_at,
                        assignment.target_category_code, category.name AS category_name,
@@ -280,7 +278,7 @@ public class PracticeRepository {
                        assessment.strengths_json, assessment.correction_what,
                        assessment.correction_why, assessment.correction_example,
                        assessment.fields_to_revise_json, assessment.feedback_text,
-                       assessment.model_id, assessment.failure_reason
+                       assessment.schema_version, assessment.model_id, assessment.failure_reason
                 FROM practice_attempt pa
                 JOIN practice_assignment assignment ON assignment.id=pa.assignment_id
                 JOIN category category ON category.code=assignment.target_category_code
@@ -293,8 +291,7 @@ public class PracticeRepository {
                 rs.getObject("parent_attempt_id", UUID.class),
                 rs.getInt("attempt_number"),
                 rs.getString("question_text"),
-                rs.getString("answer_text"),
-                rs.getString("reasoning_text"),
+                rs.getString("rationale_text"),
                 rs.getString("solution_text"),
                 rs.getString("revised_fields_json"),
                 rs.getString("status"),
@@ -322,6 +319,7 @@ public class PracticeRepository {
                 rs.getString("correction_example"),
                 rs.getString("fields_to_revise_json"),
                 rs.getString("feedback_text"),
+                rs.getString("schema_version"),
                 rs.getString("model_id"),
                 rs.getString("failure_reason")), args);
     }
@@ -349,7 +347,7 @@ public class PracticeRepository {
                 value.confidence(), value.strengthsJson(), value.correctionWhat(),
                 value.correctionWhy(), value.correctionExample(), value.fieldsToReviseJson(),
                 value.feedback(), PracticePromptCatalog.PROMPT_KEY,
-                PracticePromptCatalog.PROMPT_VERSION, ModelAssessmentParser.SCHEMA_VERSION,
+                PracticePromptCatalog.PROMPT_VERSION, ModelAssessmentV2Parser.SCHEMA_VERSION,
                 value.modelId(), value.latencyMs(), value.failureReason(), value.createdAt());
     }
 
@@ -414,8 +412,7 @@ public class PracticeRepository {
             UUID ownerId,
             UUID baseAttemptId,
             String question,
-            String answer,
-            String reasoning,
+            String rationale,
             String solution,
             OffsetDateTime updatedAt) {
     }
@@ -427,8 +424,7 @@ public class PracticeRepository {
             String domain,
             String situation,
             String question,
-            String answer,
-            String reasoning,
+            String rationale,
             String solution,
             String recommendation) {
     }
@@ -440,8 +436,7 @@ public class PracticeRepository {
             UUID parentAttemptId,
             int attemptNumber,
             String question,
-            String answer,
-            String reasoning,
+            String rationale,
             String solution,
             String revisedFieldsJson,
             String status,
@@ -469,6 +464,7 @@ public class PracticeRepository {
             String correctionExample,
             String fieldsToReviseJson,
             String feedback,
+            String schemaVersion,
             String modelId,
             String failureReason) {
     }

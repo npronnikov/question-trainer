@@ -4,13 +4,14 @@ import fs from 'node:fs/promises';
 
 const frontend = new URL('../', import.meta.url);
 
-test('practice is a labelled four-step server assessment', async () => {
+test('practice is a labelled three-field server assessment', async () => {
   const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
 
-  for (const id of ['practice-question', 'practice-answer', 'practice-reasoning', 'practice-solution']) {
+  for (const id of ['practice-question', 'practice-rationale', 'practice-solution']) {
     assert.match(html, new RegExp(`for="${id}"`));
     assert.match(html, new RegExp(`id="${id}"`));
   }
+  assert.doesNotMatch(html, /id="practice-(answer|reasoning)"/);
   assert.match(html, /id="practice-feedback"[^>]*role="status"/);
   assert.match(html, /id="trainer-rationale"/);
 });
@@ -22,7 +23,7 @@ test('practice exposes server history, worked example, timeline, and draft statu
   assert.match(html, /id="practice-history-tools"/);
   assert.match(html, /id="practice-cycle-list"[^>]*role="list"/);
   assert.match(html, /id="practice-example"/);
-  for (const field of ['question', 'answer', 'reasoning', 'solution']) {
+  for (const field of ['question', 'rationale', 'solution']) {
     assert.match(html, new RegExp(`id="practice-example-${field}"`));
   }
   assert.match(html, /id="practice-example-recommendation"/);
@@ -166,9 +167,17 @@ test('coach thought rail lives inside the practice introduction', async () => {
 
   assert.doesNotMatch(header, /ВОПРОС → ОТВЕТ → РАССУЖДЕНИЕ → РЕШЕНИЕ/);
   assert.match(empty, /class="practice-progress practice-progress-intro"/);
-  for (const label of ['Вопрос', 'Ответ', 'Рассуждение', 'Решение']) {
+  for (const label of ['Вопрос', 'Обоснование', 'Решение']) {
     assert.match(empty, new RegExp(label));
   }
+});
+
+test('practice feedback uses the full server score ranges', async () => {
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  assert.match(app, /\$\{assessment\.categoryFitScore\}\/3/);
+  assert.match(app, /\$\{assessment\.questionStrengthScore\}\/4/);
+  assert.doesNotMatch(app, /\$\{assessment\.categoryFitScore\}\/2|\$\{assessment\.questionStrengthScore\}\/5/);
 });
 
 test('coach model picker is an accessible custom popover', async () => {
@@ -385,7 +394,7 @@ test('practice omits the overview action and redundant labels', async () => {
 test('targeted moderation invalidates the offline shell cache', async () => {
   const serviceWorker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
 
-  assert.match(serviceWorker, /const CACHE = 'question-hacker-v19';/);
+  assert.match(serviceWorker, /const CACHE = 'question-hacker-v20';/);
 });
 
 test('boot activates the hash route before background API hydration', async () => {

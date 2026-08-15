@@ -95,6 +95,48 @@ class MigrationTest {
     }
 
     @Test
+    void flywayCreatesCanonicalThreeFieldPracticeContent() {
+        Integer rationaleColumns = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE UPPER(TABLE_NAME) IN (
+                  'PRACTICE_ATTEMPT', 'PRACTICE_DRAFT', 'PRACTICE_EXAMPLE'
+                ) AND UPPER(COLUMN_NAME)='RATIONALE_TEXT'
+                """, Integer.class);
+
+        assertThat(rationaleColumns).isEqualTo(3);
+
+        Integer requiredRationaleColumns = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE UPPER(TABLE_NAME) IN (
+                  'PRACTICE_ATTEMPT', 'PRACTICE_DRAFT', 'PRACTICE_EXAMPLE'
+                ) AND UPPER(COLUMN_NAME)='RATIONALE_TEXT' AND IS_NULLABLE='NO'
+                """, Integer.class);
+        assertThat(requiredRationaleColumns).isEqualTo(3);
+
+        Integer legacyColumns = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE UPPER(TABLE_NAME) IN (
+                  'PRACTICE_ATTEMPT', 'PRACTICE_DRAFT', 'PRACTICE_EXAMPLE'
+                ) AND UPPER(COLUMN_NAME) IN ('ANSWER_TEXT', 'REASONING_TEXT')
+                """, Integer.class);
+        assertThat(legacyColumns).isZero();
+    }
+
+    @Test
+    void promptCatalogKeepsLegacySchemaAndActivatesThreeFieldSchema() {
+        assertThat(jdbc.queryForList("""
+                SELECT schema_version FROM prompt_version
+                WHERE prompt_key='practice-assessment'
+                ORDER BY version_number
+                """, String.class))
+                .containsExactly("practice-assessment-v1", "practice-assessment-v2");
+        assertThat(jdbc.queryForObject("""
+                SELECT schema_version FROM prompt_version
+                WHERE prompt_key='practice-assessment' AND active=TRUE
+                """, String.class)).isEqualTo("practice-assessment-v2");
+    }
+
+    @Test
     void flywayTargetsExistingScenariosAtTrainerAndAddsPracticeHintSnapshots() {
         Integer columns = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS

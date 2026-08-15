@@ -117,7 +117,7 @@ public class CurriculumImporter implements ApplicationRunner {
                 throw new IllegalStateException("Invalid practice example category: " + category);
             }
             for (String field : List.of(
-                    "domain", "situation", "question", "answer", "reasoning",
+                    "domain", "situation", "question", "rationale",
                     "solution", "recommendation")) {
                 required(example, field);
             }
@@ -258,13 +258,13 @@ public class CurriculumImporter implements ApplicationRunner {
             jdbc.update("""
                     MERGE INTO practice_example(
                       id, category_code, domain_text, situation_text, question_text,
-                      answer_text, reasoning_text, solution_text, recommendation_text,
+                      rationale_text, solution_text, recommendation_text,
                       published, created_at
-                    ) KEY(category_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?)
+                    ) KEY(category_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?)
                     """, stableId("practice-example:" + category), category,
                     example.path("domain").asText(), example.path("situation").asText(),
-                    example.path("question").asText(), example.path("answer").asText(),
-                    example.path("reasoning").asText(), example.path("solution").asText(),
+                    example.path("question").asText(), example.path("rationale").asText(),
+                    example.path("solution").asText(),
                     example.path("recommendation").asText(), now);
         }
     }
