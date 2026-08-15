@@ -125,6 +125,126 @@ class PracticeAttemptLifecycleTest {
     }
 
     @Test
+    void unverifiedInitialAttemptCanBeEditedAndRetriedIdempotently() throws Exception {
+        when(gateway.assess(any(), anyString()))
+                .thenThrow(new IllegalStateException("stopped"))
+                .thenReturn(new PracticeAssessmentGateway.Result(
+                        validAssessment(2, 3, "HIGH", null), "retry-model"));
+        UUID assignment = assignment("assessment-alice");
+        UUID failed = submit("assessment-alice", assignment, "initial-unverified");
+        assertThat(awaitTerminal("assessment-alice", failed).path("status").asText())
+                .isEqualTo("UNVERIFIED");
+
+        mvc.perform(post("/api/practice/attempts/{id}/retries", failed)
+                        .with(user("assessment-bob")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(retryBody(question(4), answer(), reasoning(), solution(), "foreign-retry")))
+                .andExpect(status().isNotFound());
+
+        String accepted = mvc.perform(post("/api/practice/attempts/{id}/retries", failed)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(retryBody(question(4), answer(), reasoning(), solution(), "retry-same-key")))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.parentAttemptId").value(failed.toString()))
+                .andExpect(jsonPath("$.attemptNumber").value(2))
+                .andExpect(jsonPath("$.question").value(question(4)))
+                .andReturn().getResponse().getContentAsString();
+        UUID retried = UUID.fromString(json.readTree(accepted).path("attemptId").asText());
+
+        mvc.perform(post("/api/practice/attempts/{id}/retries", failed)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(retryBody(question(4), answer(), reasoning(), solution(), "retry-same-key")))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.attemptId").value(retried.toString()));
+        mvc.perform(post("/api/practice/attempts/{id}/retries", failed)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(retryBody(question(4), answer(), reasoning(), solution(), "stale-parent")))
+                .andExpect(status().isConflict());
+
+        assertThat(awaitTerminal("assessment-alice", retried).path("status").asText())
+                .isEqualTo("PASSED");
+        mvc.perform(post("/api/practice/attempts/{id}/retries", retried)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(retryBody(question(4), answer(), reasoning(), solution(), "passed-retry")))
+                .andExpect(status().isConflict());
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM practice_attempt WHERE assignment_id=?",
+                Integer.class, assignment)).isEqualTo(2);
+    }
+
+    @Test
+    void failedRevisionKeepsItsEditableFieldsAcrossRetriesAndDrafts() throws Exception {
+        when(gateway.assess(any(), anyString()))
+                .thenReturn(new PracticeAssessmentGateway.Result(
+                        validAssessment(1, 3, "HIGH", null), "test-model"))
+                .thenThrow(new IllegalStateException("revision stopped"))
+                .thenThrow(new IllegalStateException("retry stopped"))
+                .thenReturn(new PracticeAssessmentGateway.Result(
+                        validAssessment(2, 3, "HIGH", null), "retry-model"));
+        UUID assignment = assignment("assessment-alice");
+        UUID original = submit("assessment-alice", assignment, "scope-original");
+        assertThat(awaitTerminal("assessment-alice", original).path("status").asText())
+                .isEqualTo("NEEDS_REVISION");
+
+        String revisionResponse = mvc.perform(post("/api/practice/attempts/{id}/revisions", original)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.createObjectNode()
+                                .put("question", question(4))
+                                .put("idempotencyKey", "scope-revision").toString()))
+                .andExpect(status().isAccepted())
+                .andReturn().getResponse().getContentAsString();
+        UUID failedRevision = UUID.fromString(
+                json.readTree(revisionResponse).path("attemptId").asText());
+        assertThat(awaitTerminal("assessment-alice", failedRevision).path("status").asText())
+                .isEqualTo("UNVERIFIED");
+        assertEditableQuestionOnly(assignment, failedRevision);
+
+        mvc.perform(put("/api/practice/cycles/{id}/draft", assignment)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(draftBody(failedRevision, question(5), answer())))
+                .andExpect(status().isOk());
+        mvc.perform(put("/api/practice/cycles/{id}/draft", assignment)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(draftBody(failedRevision, question(5), answer() + " Изменение.")))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/practice/attempts/{id}/retries", failedRevision)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(retryBody(question(5), answer() + " Изменение.", reasoning(), solution(),
+                                "blocked-field")))
+                .andExpect(status().isBadRequest());
+
+        String retryResponse = mvc.perform(post("/api/practice/attempts/{id}/retries", failedRevision)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(retryBody(question(5), answer(), reasoning(), solution(), "scope-retry")))
+                .andExpect(status().isAccepted())
+                .andReturn().getResponse().getContentAsString();
+        UUID failedRetry = UUID.fromString(json.readTree(retryResponse).path("attemptId").asText());
+        assertThat(awaitTerminal("assessment-alice", failedRetry).path("status").asText())
+                .isEqualTo("UNVERIFIED");
+        assertEditableQuestionOnly(assignment, failedRetry);
+
+        String unchangedResponse = mvc.perform(post("/api/practice/attempts/{id}/retries", failedRetry)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(retryBody(question(5), answer(), reasoning(), solution(), "unchanged-retry")))
+                .andExpect(status().isAccepted())
+                .andReturn().getResponse().getContentAsString();
+        UUID unchangedRetry = UUID.fromString(
+                json.readTree(unchangedResponse).path("attemptId").asText());
+        assertThat(awaitTerminal("assessment-alice", unchangedRetry).path("status").asText())
+                .isEqualTo("PASSED");
+    }
+
+    @Test
     void invalidModelAssessmentLogsValidationReasonAndStackTrace() throws Exception {
         when(gateway.assess(any(), anyString())).thenReturn(
                 new PracticeAssessmentGateway.Result(
@@ -328,6 +448,47 @@ class PracticeAttemptLifecycleTest {
         return jdbc.queryForObject(
                 "SELECT COUNT(*) FROM practice_draft WHERE assignment_id=?",
                 Integer.class, assignment);
+    }
+
+    private void assertEditableQuestionOnly(UUID assignment, UUID baseAttempt) throws Exception {
+        mvc.perform(get("/api/practice/cycles/{id}", assignment)
+                        .with(user("assessment-alice")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.editor.baseAttemptId").value(baseAttempt.toString()))
+                .andExpect(jsonPath("$.editor.editableFields.length()").value(1))
+                .andExpect(jsonPath("$.editor.editableFields[0]").value("question"));
+    }
+
+    private String retryBody(String question, String answer, String reasoning,
+                             String solution, String key) {
+        return json.createObjectNode()
+                .put("question", question).put("answer", answer)
+                .put("reasoning", reasoning).put("solution", solution)
+                .put("model", "gpt-5.6-terra[high]")
+                .put("idempotencyKey", key).toString();
+    }
+
+    private String draftBody(UUID baseAttempt, String question, String answer) {
+        return json.createObjectNode()
+                .put("baseAttemptId", baseAttempt.toString())
+                .put("question", question).put("answer", answer)
+                .put("reasoning", reasoning()).put("solution", solution()).toString();
+    }
+
+    private String question(int actions) {
+        return "Какие " + actions + " наблюдаемых действия гарантированно приведут запуск к провалу за неделю?";
+    }
+
+    private String answer() {
+        return "Провал создадут размытый владелец результата, поздняя проверка и скрытые риски.";
+    }
+
+    private String reasoning() {
+        return "Если обратить причины провала, получаем раннего владельца, быстрый тест и открытый реестр рисков.";
+    }
+
+    private String solution() {
+        return "Назначить владельца и провести недельный тест с реестром трёх главных рисков.";
     }
 
     private String validAssessment(int fit, int strength, String confidence, String verdict) {

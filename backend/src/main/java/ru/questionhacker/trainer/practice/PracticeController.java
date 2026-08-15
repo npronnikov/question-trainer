@@ -104,6 +104,17 @@ public class PracticeController {
                         request.solution(), request.model(), request.idempotencyKey()));
     }
 
+    @PostMapping("/attempts/{attemptId}/retries")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public PracticeAssessmentService.AttemptView retry(
+            @PathVariable UUID attemptId,
+            @Valid @RequestBody RetryRequest request) {
+        return assessments.retry(auth.requireCurrentUser().id(), attemptId,
+                new PracticeAssessmentService.Retry(
+                        request.question(), request.answer(), request.reasoning(),
+                        request.solution(), request.model(), request.idempotencyKey()));
+    }
+
     @GetMapping(value = "/attempts/{attemptId}/events",
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter events(@PathVariable UUID attemptId) {
@@ -124,6 +135,15 @@ public class PracticeController {
     }
 
     public record RevisionRequest(
+            @Size(max = 1800) String question,
+            @Size(max = 3000) String answer,
+            @Size(max = 5000) String reasoning,
+            @Size(max = 3000) String solution,
+            @Size(max = 120) String model,
+            @Size(max = 100) String idempotencyKey) {
+    }
+
+    public record RetryRequest(
             @Size(max = 1800) String question,
             @Size(max = 3000) String answer,
             @Size(max = 5000) String reasoning,

@@ -6,9 +6,12 @@ import java.time.OffsetDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -28,6 +31,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class PracticeAssessmentService {
 
     private static final Logger log = LoggerFactory.getLogger(PracticeAssessmentService.class);
+    private static final List<String> ALL_FIELDS = List.of(
+            "question", "answer", "reasoning", "solution");
     private static final Set<String> FIELDS = Set.of("question", "answer", "reasoning", "solution");
 
     private final PracticeRepository practice;
@@ -124,6 +129,72 @@ public class PracticeAssessmentService {
         practice.deleteDraft(ownerId, assignment.id());
         scheduleEvaluation(attempt.id());
         return view(attempt);
+    }
+
+    @Transactional
+    public AttemptView retry(UUID ownerId, UUID parentAttemptId, Retry input) {
+        practice.lockOwner(ownerId);
+        String key = normalize(input.idempotencyKey());
+        var existing = practice.findAttemptByIdempotency(ownerId, key);
+        if (existing.isPresent()) return view(existing.get());
+        var parent = practice.findAttempt(ownerId, parentAttemptId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Попытка не найдена"));
+        if (!"UNVERIFIED".equals(parent.status())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Повторять можно только непроверенную попытку");
+        }
+        List<AttemptView> attempts = practice.listAttempts(ownerId, parent.assignmentId())
+                .stream().map(this::view).toList();
+        if (!attempts.getLast().attemptId().equals(parent.id())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Повторять можно только последнюю попытку");
+        }
+        Set<String> allowed = Set.copyOf(editableFields(attempts));
+        String question = retried("question", input.question(), parent.question(), allowed);
+        String answer = retried("answer", input.answer(), parent.answer(), allowed);
+        String reasoning = retried("reasoning", input.reasoning(), parent.reasoning(), allowed);
+        String solution = retried("solution", input.solution(), parent.solution(), allowed);
+        var submission = new Submission(parent.assignmentId(), question, answer, reasoning,
+                solution, input.model() == null ? parent.requestedModel() : input.model(), key);
+        validateInput(submission);
+        List<String> changed = FIELDS.stream()
+                .filter(field -> !fieldValue(field, parent).equals(fieldValue(
+                        field, question, answer, reasoning, solution)))
+                .sorted().toList();
+        var assignment = practice.findAssignment(ownerId, parent.assignmentId()).orElseThrow();
+        var attempt = practice.createAttempt(
+                ownerId, assignment, parent.id(), question, answer, reasoning, solution,
+                write(changed), normalize(submission.model()), key, OffsetDateTime.now(clock));
+        practice.deleteDraft(ownerId, assignment.id());
+        scheduleEvaluation(attempt.id());
+        return view(attempt);
+    }
+
+    List<String> editableFields(List<AttemptView> attempts) {
+        if (attempts.isEmpty()) return ALL_FIELDS;
+        AttemptView latest = attempts.getLast();
+        if ("NEEDS_REVISION".equals(latest.status())) {
+            return List.copyOf(latest.assessment().fieldsToRevise());
+        }
+        if (!"UNVERIFIED".equals(latest.status())) return List.of();
+        Map<UUID, AttemptView> byId = attempts.stream().collect(Collectors.toMap(
+                AttemptView::attemptId, Function.identity()));
+        AttemptView cursor = latest;
+        while (cursor.parentAttemptId() != null) {
+            cursor = byId.get(cursor.parentAttemptId());
+            if (cursor == null) conflictRetryScope();
+            if ("NEEDS_REVISION".equals(cursor.status())) {
+                return List.copyOf(cursor.assessment().fieldsToRevise());
+            }
+            if (!"UNVERIFIED".equals(cursor.status())) conflictRetryScope();
+        }
+        return ALL_FIELDS;
+    }
+
+    private void conflictRetryScope() {
+        throw new ResponseStatusException(
+                HttpStatus.CONFLICT, "Не удалось восстановить область повторной проверки");
     }
 
     private void scheduleEvaluation(UUID attemptId) {
@@ -258,6 +329,17 @@ public class PracticeAssessmentService {
         return value;
     }
 
+    private String retried(String field, String supplied, String original, Set<String> allowed) {
+        if (supplied == null) return original;
+        String value = supplied.strip();
+        if (!allowed.contains(field) && !value.equals(original)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Поле " + field + " недоступно для повторной проверки");
+        }
+        return value;
+    }
+
     private String fieldValue(String field, PracticeRepository.AttemptRow row) {
         return switch (field) {
             case "question" -> row.question();
@@ -314,6 +396,15 @@ public class PracticeAssessmentService {
     }
 
     public record Revision(
+            String question,
+            String answer,
+            String reasoning,
+            String solution,
+            String model,
+            String idempotencyKey) {
+    }
+
+    public record Retry(
             String question,
             String answer,
             String reasoning,

@@ -78,11 +78,12 @@ public class PracticeCycleService {
             return;
         }
         var latest = attempts.getLast();
-        if (!"NEEDS_REVISION".equals(latest.status())
-                || !latest.attemptId().equals(input.baseAttemptId())) {
-            conflict("Черновик должен продолжать последнюю попытку, требующую корректировки");
+        if (!latest.attemptId().equals(input.baseAttemptId())
+                || !("NEEDS_REVISION".equals(latest.status())
+                || "UNVERIFIED".equals(latest.status()))) {
+            conflict("Черновик должен продолжать последнюю редактируемую попытку");
         }
-        Set<String> editable = Set.copyOf(latest.assessment().fieldsToRevise());
+        Set<String> editable = Set.copyOf(editableFields(attempts));
         if ((!editable.contains("question") && !latest.question().equals(input.question()))
                 || (!editable.contains("answer") && !latest.answer().equals(input.answer()))
                 || (!editable.contains("reasoning") && !latest.reasoning().equals(input.reasoning()))
@@ -105,8 +106,7 @@ public class PracticeCycleService {
         }
         if (attempts.isEmpty()) return new EditorView(null, "", "", "", "", ALL_FIELDS);
         var latest = attempts.getLast();
-        List<String> fields = "NEEDS_REVISION".equals(latest.status())
-                ? latest.assessment().fieldsToRevise() : List.of();
+        List<String> fields = editableFields(attempts);
         return new EditorView(latest.attemptId(), latest.question(), latest.answer(),
                 latest.reasoning(), latest.solution(), fields);
     }
@@ -116,8 +116,12 @@ public class PracticeCycleService {
         if (attempts.isEmpty()) return ALL_FIELDS;
         var latest = attempts.getLast();
         return latest.attemptId().equals(baseAttemptId)
-                && "NEEDS_REVISION".equals(latest.status())
-                ? latest.assessment().fieldsToRevise() : List.of();
+                ? editableFields(attempts) : List.of();
+    }
+
+    private List<String> editableFields(
+            List<PracticeAssessmentService.AttemptView> attempts) {
+        return assessments.editableFields(attempts);
     }
 
     private DraftView draftView(PracticeRepository.DraftRow row) {
