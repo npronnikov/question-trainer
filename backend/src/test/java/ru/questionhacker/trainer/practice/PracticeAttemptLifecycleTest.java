@@ -161,6 +161,26 @@ class PracticeAttemptLifecycleTest {
         mvc.perform(post("/api/practice/attempts/{id}/retries", failed)
                         .with(user("assessment-alice")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
+                        .content(retryBody(question(5), answer(), reasoning(), solution(), "retry-same-key")))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/practice/attempts/{id}/retries", failed)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idempotencyKey\":\"retry-same-key\"}"))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/practice/attempts/{id}/retries", UUID.randomUUID())
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(retryBody(question(4), answer(), reasoning(), solution(), "retry-same-key")))
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/api/practice/attempts/{id}/retries", retried)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(retryBody(question(4), answer(), reasoning(), solution(), "retry-same-key")))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/practice/attempts/{id}/retries", failed)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content(retryBody(question(4), answer(), reasoning(), solution(), "stale-parent")))
                 .andExpect(status().isConflict());
 
@@ -347,6 +367,25 @@ class PracticeAttemptLifecycleTest {
                 .andReturn().getResponse().getContentAsString();
         assertThat(draftCount(assignment)).isZero();
         UUID revision = UUID.fromString(json.readTree(response).path("attemptId").asText());
+        mvc.perform(post("/api/practice/attempts/{id}/revisions", original)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.createObjectNode()
+                                .put("question", question(5))
+                                .put("idempotencyKey", "good-revision").toString()))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/practice/attempts/{id}/revisions", original)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idempotencyKey\":\"good-revision\"}"))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/practice/attempts/{id}/revisions", original)
+                        .with(user("assessment-alice")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.createObjectNode()
+                                .put("question", question(5))
+                                .put("idempotencyKey", "stale-revision-parent").toString()))
+                .andExpect(status().isConflict());
         assertThat(awaitTerminal("assessment-alice", revision).path("status").asText())
                 .isEqualTo("PASSED");
         assertThat(jdbc.queryForObject(

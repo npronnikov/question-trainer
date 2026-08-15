@@ -48,6 +48,7 @@ public class PracticeCycleService {
 
     @Transactional
     public DraftView saveDraft(UUID ownerId, UUID assignmentId, DraftInput input) {
+        practice.lockOwner(ownerId);
         requireAssignment(ownerId, assignmentId);
         List<PracticeAssessmentService.AttemptView> attempts = practice
                 .listAttempts(ownerId, assignmentId).stream().map(assessments::view).toList();

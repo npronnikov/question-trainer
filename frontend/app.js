@@ -83,6 +83,11 @@
     return `${prefix}-${crypto.randomUUID()}`;
   }
 
+  const practiceRetry = window.QH_PRACTICE_RETRY.createRetrySubmitter({
+    request: api,
+    keyFactory: idempotencyKey
+  });
+
   function setBusy(element, busy, label) {
     if (!element) return;
     element.disabled = busy;
@@ -783,6 +788,7 @@
   }
 
   function renderPracticeCycle(cycle, focusFeedback = false) {
+    practiceRetry.reset();
     practiceSubmitting = false;
     practiceAssignment = cycle.assignment;
     practiceAttempt = cycle.attempts.at(-1) || null;
@@ -927,14 +933,14 @@
     const retry = attempt?.status === 'UNVERIFIED';
     const path = revision
       ? `/practice/attempts/${attempt.attemptId}/revisions`
-      : retry ? `/practice/attempts/${attempt.attemptId}/retries` : '/practice/attempts';
+      : '/practice/attempts';
     const body = revision
       ? Object.fromEntries([...fieldsToRevise.map(field => [field, values[field]]), ['model', selectedModel], ['idempotencyKey', idempotencyKey('revision')]])
-      : retry
-        ? { ...values, model: selectedModel, idempotencyKey: idempotencyKey('retry') }
-        : { assignmentId: assignment.assignmentId, ...values, model: selectedModel, idempotencyKey: idempotencyKey('attempt') };
+      : { assignmentId: assignment.assignmentId, ...values, model: selectedModel, idempotencyKey: idempotencyKey('attempt') };
     try {
-      practiceAttempt = await api(path, { method: 'POST', body: JSON.stringify(body) });
+      practiceAttempt = retry
+        ? await practiceRetry.submit({ attemptId: attempt.attemptId, values, model: selectedModel })
+        : await api(path, { method: 'POST', body: JSON.stringify(body) });
       practiceDraftDirty = false;
       $('#practice-attempt').textContent = `Попытка ${practiceAttempt.attemptNumber} · оценка сервера`;
       await loadPracticeCycles();
@@ -944,6 +950,7 @@
       $('#practice-error').textContent = requestError.message;
       setBusy($('#submit-practice'), false, retry ? 'Повторить проверку →' : 'Отправить на оценку →');
       setRevisionFields(revision ? fieldsToRevise : retry ? practiceEditableFields : []);
+      updatePracticeProgress(false);
     }
   }
 

@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -72,6 +73,7 @@ public class PracticeAssessmentService {
     @Transactional
     public AttemptView submit(UUID ownerId, Submission input) {
         validateInput(input);
+        practice.lockOwner(ownerId);
         var existing = practice.findAttemptByIdempotency(ownerId, input.idempotencyKey());
         if (existing.isPresent()) return view(existing.get());
         var assignment = practice.findAssignment(ownerId, input.assignmentId())
@@ -96,13 +98,29 @@ public class PracticeAssessmentService {
 
     @Transactional
     public AttemptView revise(UUID ownerId, UUID parentAttemptId, Revision input) {
-        var existing = practice.findAttemptByIdempotency(ownerId, normalize(input.idempotencyKey()));
-        if (existing.isPresent()) return view(existing.get());
+        practice.lockOwner(ownerId);
+        String key = normalize(input.idempotencyKey());
         var parent = practice.findAttempt(ownerId, parentAttemptId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Попытка не найдена"));
+        var existing = practice.findAttemptByIdempotency(ownerId, key);
+        if (existing.isPresent()) {
+            if (!parentAttemptId.equals(existing.get().parentAttemptId())) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT, "Ключ повторной отправки относится к другой попытке");
+            }
+            requireMatchingIdempotentPayload(existing.get(), parent, input.question(),
+                    input.answer(), input.reasoning(), input.solution(), input.model());
+            return view(existing.get());
+        }
         if (!"NEEDS_REVISION".equals(parent.status())) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT, "Исправлять можно только попытку со статусом NEEDS_REVISION");
+        }
+        List<AttemptView> attempts = practice.listAttempts(ownerId, parent.assignmentId())
+                .stream().map(this::view).toList();
+        if (!attempts.getLast().attemptId().equals(parent.id())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Исправлять можно только последнюю попытку");
         }
         Set<String> allowed = new HashSet<>(read(
                 parent.fieldsToReviseJson(), new TypeReference<List<String>>() { }));
@@ -119,12 +137,12 @@ public class PracticeAssessmentService {
         }
         var submission = new Submission(parent.assignmentId(), question, answer, reasoning,
                 solution, input.model() == null ? parent.requestedModel() : input.model(),
-                input.idempotencyKey());
+                key);
         validateInput(submission);
         var assignment = practice.findAssignment(ownerId, parent.assignmentId()).orElseThrow();
         var attempt = practice.createAttempt(
                 ownerId, assignment, parent.id(), question, answer, reasoning, solution,
-                write(changed), normalize(submission.model()), normalize(input.idempotencyKey()),
+                write(changed), normalize(submission.model()), key,
                 OffsetDateTime.now(clock));
         practice.deleteDraft(ownerId, assignment.id());
         scheduleEvaluation(attempt.id());
@@ -135,11 +153,19 @@ public class PracticeAssessmentService {
     public AttemptView retry(UUID ownerId, UUID parentAttemptId, Retry input) {
         practice.lockOwner(ownerId);
         String key = normalize(input.idempotencyKey());
-        var existing = practice.findAttemptByIdempotency(ownerId, key);
-        if (existing.isPresent()) return view(existing.get());
         var parent = practice.findAttempt(ownerId, parentAttemptId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Попытка не найдена"));
+        var existing = practice.findAttemptByIdempotency(ownerId, key);
+        if (existing.isPresent()) {
+            if (!parentAttemptId.equals(existing.get().parentAttemptId())) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT, "Ключ повторной отправки относится к другой попытке");
+            }
+            requireMatchingIdempotentPayload(existing.get(), parent, input.question(),
+                    input.answer(), input.reasoning(), input.solution(), input.model());
+            return view(existing.get());
+        }
         if (!"UNVERIFIED".equals(parent.status())) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT, "Повторять можно только непроверенную попытку");
@@ -338,6 +364,30 @@ public class PracticeAssessmentService {
                     "Поле " + field + " недоступно для повторной проверки");
         }
         return value;
+    }
+
+    private void requireMatchingIdempotentPayload(
+            PracticeRepository.AttemptRow existing,
+            PracticeRepository.AttemptRow parent,
+            String question, String answer, String reasoning, String solution, String model) {
+        if (!Objects.equals(resolved(question, parent.question()), existing.question())
+                || !Objects.equals(resolved(answer, parent.answer()), existing.answer())
+                || !Objects.equals(resolved(reasoning, parent.reasoning()), existing.reasoning())
+                || !Objects.equals(resolved(solution, parent.solution()), existing.solution())
+                || !Objects.equals(resolvedModel(model, parent.requestedModel()),
+                        existing.requestedModel())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Ключ повторной отправки уже использован с другими данными");
+        }
+    }
+
+    private String resolved(String supplied, String parentValue) {
+        return supplied == null ? parentValue : supplied.strip();
+    }
+
+    private String resolvedModel(String supplied, String parentValue) {
+        return supplied == null ? parentValue : normalize(supplied);
     }
 
     private String fieldValue(String field, PracticeRepository.AttemptRow row) {

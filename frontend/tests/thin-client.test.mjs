@@ -286,14 +286,21 @@ test('practice feedback leads into an explicit revision form', async () => {
 });
 
 test('unverified practice enables an editable server retry', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+  const worker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
   const submit = app.match(/async function submitPractice\(event\)[\s\S]*?async function followAttempt/)?.[0] || '';
   const feedback = app.match(/function renderPracticeFeedback\(attempt, focus = true\)[\s\S]*?function setRevisionFields/)?.[0] || '';
 
+  assert.ok(html.indexOf('<script src="practice-retry.js"></script>') > -1);
+  assert.ok(html.indexOf('<script src="practice-retry.js"></script>') < html.indexOf('<script src="app.js"></script>'));
+  assert.match(worker, /\.\/practice-retry\.js/);
   assert.match(app, /practiceEditableFields = cycle\.editor\.editableFields/);
   assert.match(app, /const retry = attempt\?\.status === 'UNVERIFIED'/);
-  assert.match(submit, /`\/practice\/attempts\/\$\{attempt\.attemptId\}\/retries`/);
-  assert.match(submit, /idempotencyKey\('retry'\)/);
+  assert.match(app, /QH_PRACTICE_RETRY\.createRetrySubmitter/);
+  assert.match(submit, /practiceRetry\.submit/);
+  assert.doesNotMatch(submit, /idempotencyKey\('retry'\)/);
+  assert.match(submit, /catch \(requestError\)[\s\S]*updatePracticeProgress\(false\)/);
   assert.match(app, /Повторная проверка попытки/);
   assert.match(app, /Повторить проверку →/);
   assert.match(feedback, /practice-retry[\s\S]*focusFirstRevision\(practiceEditableFields\)/);
@@ -378,7 +385,7 @@ test('practice omits the overview action and redundant labels', async () => {
 test('targeted moderation invalidates the offline shell cache', async () => {
   const serviceWorker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
 
-  assert.match(serviceWorker, /const CACHE = 'question-hacker-v18';/);
+  assert.match(serviceWorker, /const CACHE = 'question-hacker-v19';/);
 });
 
 test('boot activates the hash route before background API hydration', async () => {
