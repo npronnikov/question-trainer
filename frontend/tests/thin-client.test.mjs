@@ -394,7 +394,7 @@ test('practice omits the overview action and redundant labels', async () => {
 test('idea visualization invalidates and joins the offline shell cache', async () => {
   const serviceWorker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
 
-  assert.match(serviceWorker, /const CACHE = 'question-hacker-v22';/);
+  assert.match(serviceWorker, /const CACHE = 'question-hacker-v23';/);
   assert.match(serviceWorker, /\.\/idea-potential\.js/);
 });
 
