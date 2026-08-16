@@ -1,5 +1,6 @@
 package ru.questionhacker.trainer.practice;
 
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
@@ -29,11 +30,25 @@ public class PracticeRepository {
         return jdbc.queryForList("SELECT code FROM category ORDER BY sort_order", String.class);
     }
 
+    public List<CategoryRow> categoryDefinitions() {
+        return jdbc.query("SELECT code, name FROM category ORDER BY sort_order",
+                (rs, row) -> new CategoryRow(rs.getString("code"), rs.getString("name")));
+    }
+
     public long assignmentCount(UUID ownerId) {
         Long count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM practice_assignment WHERE owner_id=?",
                 Long.class, ownerId);
         return count == null ? 0L : count;
+    }
+
+    public long nextAssignmentSequence(UUID ownerId) {
+        Long current = jdbc.queryForObject("""
+                SELECT COALESCE(MAX(sequence_number), 0)
+                FROM practice_assignment
+                WHERE owner_id=?
+                """, Long.class, ownerId);
+        return (current == null ? 0L : current) + 1L;
     }
 
     public int deleteAllCycles() {
@@ -73,24 +88,29 @@ public class PracticeRepository {
     }
 
     public AssignmentRow createAssignment(UUID ownerId, AssignmentSource source,
-                                          String guidance, OffsetDateTime now) {
+                                          String guidance, long sequenceNumber,
+                                          int cycleNumber, int cyclePosition,
+                                          OffsetDateTime now) {
         UUID id = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO practice_assignment(
                   id, owner_id, scenario_id, target_category_code, domain_text,
-                  situation_text, hint_text, guidance_text, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  situation_text, hint_text, guidance_text,
+                  sequence_number, cycle_number, cycle_position, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, id, ownerId, source.scenarioId(), source.categoryCode(), source.domain(),
-                source.situation(), source.hint(), guidance, now);
+                source.situation(), source.hint(), guidance,
+                sequenceNumber, cycleNumber, cyclePosition, now);
         return new AssignmentRow(id, ownerId, source.scenarioId(), source.categoryCode(),
-                source.categoryName(), source.domain(), source.situation(), source.hint(), guidance, now);
+                source.categoryName(), source.domain(), source.situation(), source.hint(), guidance,
+                sequenceNumber, cycleNumber, cyclePosition, now);
     }
 
     public Optional<AssignmentRow> findAssignment(UUID ownerId, UUID assignmentId) {
         return jdbc.query("""
                 SELECT pa.id, pa.owner_id, pa.scenario_id, pa.target_category_code,
                        c.name, pa.domain_text, pa.situation_text, pa.hint_text, pa.guidance_text,
-                       pa.created_at
+                       pa.sequence_number, pa.cycle_number, pa.cycle_position, pa.created_at
                 FROM practice_assignment pa
                 JOIN category c ON c.code=pa.target_category_code
                 WHERE pa.owner_id=? AND pa.id=?
@@ -104,6 +124,9 @@ public class PracticeRepository {
                 rs.getString("situation_text"),
                 rs.getString("hint_text"),
                 rs.getString("guidance_text"),
+                rs.getLong("sequence_number"),
+                rs.getInt("cycle_number"),
+                rs.getInt("cycle_position"),
                 rs.getObject("created_at", OffsetDateTime.class)), ownerId, assignmentId)
                 .stream().findFirst();
     }
@@ -113,6 +136,8 @@ public class PracticeRepository {
                 SELECT assignment.id AS assignment_id,
                        assignment.target_category_code, category.name AS category_name,
                        assignment.domain_text, assignment.situation_text,
+                       assignment.sequence_number, assignment.cycle_number,
+                       assignment.cycle_position,
                        CASE
                          WHEN latest.status='EVALUATING' THEN 'EVALUATING'
                          WHEN draft.assignment_id IS NOT NULL THEN 'DRAFT'
@@ -147,10 +172,57 @@ public class PracticeRepository {
                 rs.getString("category_name"),
                 rs.getString("domain_text"),
                 rs.getString("situation_text"),
+                rs.getLong("sequence_number"),
+                rs.getInt("cycle_number"),
+                rs.getInt("cycle_position"),
                 rs.getString("cycle_status"),
                 rs.getInt("attempt_count"),
                 rs.getObject("created_at", OffsetDateTime.class),
                 rs.getObject("updated_at", OffsetDateTime.class)), ownerId);
+    }
+
+    public List<IdeaProgressRow> listIdeaProgress(UUID ownerId) {
+        return jdbc.query("""
+                SELECT assignment.id AS assignment_id,
+                       assignment.sequence_number, assignment.cycle_number,
+                       assignment.cycle_position, assignment.target_category_code,
+                       category.name AS category_name, assignment.situation_text,
+                       first_attempt.id AS attempt_id,
+                       first_attempt.completed_at,
+                       assessment.schema_version, assessment.idea_potential_score,
+                       assessment.idea_potential_dimensions_json,
+                       assessment.prompt_version, assessment.model_id
+                FROM practice_assignment assignment
+                JOIN category ON category.code=assignment.target_category_code
+                LEFT JOIN practice_attempt first_attempt ON first_attempt.id=(
+                  SELECT candidate.id
+                  FROM practice_attempt candidate
+                  JOIN practice_assessment candidate_assessment
+                    ON candidate_assessment.attempt_id=candidate.id
+                  WHERE candidate.assignment_id=assignment.id
+                    AND candidate_assessment.outcome='VERIFIED'
+                  ORDER BY candidate.attempt_number, candidate.id
+                  LIMIT 1
+                )
+                LEFT JOIN practice_assessment assessment
+                  ON assessment.attempt_id=first_attempt.id
+                WHERE assignment.owner_id=?
+                ORDER BY assignment.sequence_number
+                """, (rs, row) -> new IdeaProgressRow(
+                rs.getObject("assignment_id", UUID.class),
+                rs.getLong("sequence_number"),
+                rs.getInt("cycle_number"),
+                rs.getInt("cycle_position"),
+                rs.getString("target_category_code"),
+                rs.getString("category_name"),
+                rs.getString("situation_text"),
+                rs.getObject("attempt_id", UUID.class),
+                rs.getObject("completed_at", OffsetDateTime.class),
+                rs.getString("schema_version"),
+                rs.getBigDecimal("idea_potential_score"),
+                rs.getString("idea_potential_dimensions_json"),
+                (Integer) rs.getObject("prompt_version"),
+                rs.getString("model_id")), ownerId);
     }
 
     public List<AttemptRow> listAttempts(UUID ownerId, UUID assignmentId) {
@@ -275,6 +347,8 @@ public class PracticeRepository {
                        assessment.category_fit_evidence, assessment.confused_with,
                        assessment.question_strength_score,
                        assessment.strength_dimensions_json, assessment.confidence,
+                       assessment.idea_potential_score,
+                       assessment.idea_potential_dimensions_json,
                        assessment.strengths_json, assessment.correction_what,
                        assessment.correction_why, assessment.correction_example,
                        assessment.fields_to_revise_json, assessment.feedback_text,
@@ -313,6 +387,8 @@ public class PracticeRepository {
                 (Integer) rs.getObject("question_strength_score"),
                 rs.getString("strength_dimensions_json"),
                 rs.getString("confidence"),
+                rs.getBigDecimal("idea_potential_score"),
+                rs.getString("idea_potential_dimensions_json"),
                 rs.getString("strengths_json"),
                 rs.getString("correction_what"),
                 rs.getString("correction_why"),
@@ -337,17 +413,19 @@ public class PracticeRepository {
                   id, attempt_id, outcome, completeness_status, step_results_json,
                   category_fit_score, category_fit_evidence, confused_with,
                   question_strength_score, strength_dimensions_json, confidence,
+                  idea_potential_score, idea_potential_dimensions_json,
                   strengths_json, correction_what, correction_why, correction_example,
                   fields_to_revise_json, feedback_text, prompt_key, prompt_version,
                   schema_version, model_id, latency_ms, failure_reason, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, value.id(), value.attemptId(), value.outcome(), value.completenessStatus(),
                 value.stepResultsJson(), value.categoryFitScore(), value.categoryFitEvidence(),
                 value.confusedWith(), value.questionStrengthScore(), value.strengthDimensionsJson(),
-                value.confidence(), value.strengthsJson(), value.correctionWhat(),
+                value.confidence(), value.ideaPotentialScore(), value.ideaPotentialDimensionsJson(),
+                value.strengthsJson(), value.correctionWhat(),
                 value.correctionWhy(), value.correctionExample(), value.fieldsToReviseJson(),
                 value.feedback(), PracticePromptCatalog.PROMPT_KEY,
-                PracticePromptCatalog.PROMPT_VERSION, ModelAssessmentV2Parser.SCHEMA_VERSION,
+                PracticePromptCatalog.PROMPT_VERSION, ModelAssessmentV3Parser.SCHEMA_VERSION,
                 value.modelId(), value.latencyMs(), value.failureReason(), value.createdAt());
     }
 
@@ -382,6 +460,9 @@ public class PracticeRepository {
             String hint) {
     }
 
+    public record CategoryRow(String code, String name) {
+    }
+
     public record AssignmentRow(
             UUID id,
             UUID ownerId,
@@ -392,6 +473,9 @@ public class PracticeRepository {
             String situation,
             String hint,
             String guidance,
+            long sequenceNumber,
+            int cycleNumber,
+            int cyclePosition,
             OffsetDateTime createdAt) {
     }
 
@@ -401,10 +485,30 @@ public class PracticeRepository {
             String categoryName,
             String domain,
             String situation,
+            long sequenceNumber,
+            int cycleNumber,
+            int cyclePosition,
             String status,
             int attemptCount,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt) {
+    }
+
+    public record IdeaProgressRow(
+            UUID assignmentId,
+            long sequenceNumber,
+            int cycleNumber,
+            int cyclePosition,
+            String categoryCode,
+            String categoryName,
+            String situation,
+            UUID attemptId,
+            OffsetDateTime completedAt,
+            String schemaVersion,
+            BigDecimal ideaPotentialScore,
+            String ideaPotentialDimensionsJson,
+            Integer promptVersion,
+            String modelId) {
     }
 
     public record DraftRow(
@@ -458,6 +562,8 @@ public class PracticeRepository {
             Integer questionStrengthScore,
             String strengthDimensionsJson,
             String confidence,
+            BigDecimal ideaPotentialScore,
+            String ideaPotentialDimensionsJson,
             String strengthsJson,
             String correctionWhat,
             String correctionWhy,
@@ -481,6 +587,8 @@ public class PracticeRepository {
             Integer questionStrengthScore,
             String strengthDimensionsJson,
             String confidence,
+            BigDecimal ideaPotentialScore,
+            String ideaPotentialDimensionsJson,
             String strengthsJson,
             String correctionWhat,
             String correctionWhy,

@@ -13,6 +13,10 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class PracticeAssignmentService {
 
+    static final List<String> CANONICAL_CATEGORIES = List.of(
+            "INVERSION", "HYPERBOLE", "CROSS_DISCIPLINE", "BACKCASTING",
+            "PROVOCATION", "REFRAMING", "SIMPLIFICATION");
+
     private final PracticeRepository practice;
 
     public PracticeAssignmentService(PracticeRepository practice) {
@@ -23,16 +27,19 @@ public class PracticeAssignmentService {
     public AssignmentView create(UUID ownerId) {
         practice.lockOwner(ownerId);
         List<String> categories = practice.categoryCodes();
-        if (categories.isEmpty()) {
-            throw PracticeAssignmentUnavailableException.exhausted();
+        if (!CANONICAL_CATEGORIES.equals(categories)) {
+            throw new IllegalStateException("Practice categories do not match the canonical cycle");
         }
-        long position = practice.assignmentCount(ownerId);
-        String category = categories.get((int) (position % categories.size()));
+        long sequenceNumber = practice.nextAssignmentSequence(ownerId);
+        int cyclePosition = Math.toIntExact(((sequenceNumber - 1) % 7) + 1);
+        int cycleNumber = Math.toIntExact(((sequenceNumber - 1) / 7) + 1);
+        String category = CANONICAL_CATEGORIES.get(cyclePosition - 1);
         var source = practice.selectAssignmentSource(ownerId, category)
                 .orElseThrow(PracticeAssignmentUnavailableException::exhausted);
         String guidance = source.operation() + " Контрольный ориентир: " + source.cue();
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        var assignment = practice.createAssignment(ownerId, source, guidance, now);
+        var assignment = practice.createAssignment(
+                ownerId, source, guidance, sequenceNumber, cycleNumber, cyclePosition, now);
         practice.createEmptyDraft(ownerId, assignment.id(), now);
         return view(assignment);
     }
@@ -49,6 +56,7 @@ public class PracticeAssignmentService {
         return new AssignmentView(
                 row.id(), row.domain(), row.situation(), row.hint(),
                 new TargetCategory(row.categoryCode(), row.categoryName(), row.guidance()),
+                row.sequenceNumber(), row.cycleNumber(), row.cyclePosition(),
                 row.createdAt());
     }
 
@@ -58,6 +66,9 @@ public class PracticeAssignmentService {
             String situation,
             String hint,
             TargetCategory targetCategory,
+            long sequenceNumber,
+            int cycleNumber,
+            int cyclePosition,
             OffsetDateTime createdAt) {
     }
 

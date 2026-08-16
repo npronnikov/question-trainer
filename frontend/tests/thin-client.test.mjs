@@ -391,10 +391,11 @@ test('practice omits the overview action and redundant labels', async () => {
   assert.doesNotMatch(startPractice, /generate|scenario-candidates/);
 });
 
-test('targeted moderation invalidates the offline shell cache', async () => {
+test('idea visualization invalidates and joins the offline shell cache', async () => {
   const serviceWorker = await fs.readFile(new URL('sw.js', frontend), 'utf8');
 
-  assert.match(serviceWorker, /const CACHE = 'question-hacker-v20';/);
+  assert.match(serviceWorker, /const CACHE = 'question-hacker-v22';/);
+  assert.match(serviceWorker, /\.\/idea-potential\.js/);
 });
 
 test('boot activates the hash route before background API hydration', async () => {
@@ -405,4 +406,39 @@ test('boot activates the hash route before background API hydration', async () =
   assert.ok(routeActivation > -1);
   assert.ok(backgroundHydration > -1);
   assert.ok(routeActivation < backgroundHydration);
+});
+
+test('practice loads the idea visualization before rendering attempt radars', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+
+  const helper = html.indexOf('<script src="idea-potential.js"></script>');
+  const application = html.indexOf('<script src="app.js"></script>');
+  assert.ok(helper > -1 && helper < application);
+  assert.match(app, /QH_IDEA_POTENTIAL/);
+  assert.match(app, /ideaPotential\.radarMarkup/);
+  assert.match(app, /Оценка потенциала ещё не выполнялась/);
+  assert.match(app, /Паутинка попытки/);
+});
+
+test('practice exposes on-demand category dynamics without cycle-level AI', async () => {
+  const html = await fs.readFile(new URL('index.html', frontend), 'utf8');
+  const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
+  const css = await fs.readFile(new URL('styles.css', frontend), 'utf8');
+
+  assert.match(html, /id="practice-idea-progress"[^>]*aria-haspopup="dialog"[^>]*aria-controls="idea-progress-dialog"/);
+  assert.match(html, /<dialog[^>]*id="idea-progress-dialog"/);
+  assert.match(html, /id="idea-progress-categories"/);
+  assert.match(html, /id="idea-progress-metrics"/);
+  assert.match(html, /id="idea-progress-chart"/);
+  assert.match(html, /id="idea-progress-detail"/);
+  assert.match(app, /api\('\/practice\/idea-progress'\)/);
+  assert.match(app, /ideaPotential\.trendMarkup/);
+  assert.match(app, /CYCLE_INCOMPLETE/);
+  assert.match(app, /point\.cycleNumber === 1 && point\.attemptId/);
+  assert.match(app, /Проверено.*completedAt/);
+  assert.match(app, /event\.key === 'Enter' \|\| event\.key === ' '/);
+  assert.doesNotMatch(app, /idea-progress[\s\S]{0,200}(assess|generate|prompt)/i);
+  assert.match(css, /\.idea-progress-dialog/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.idea-trend/);
 });

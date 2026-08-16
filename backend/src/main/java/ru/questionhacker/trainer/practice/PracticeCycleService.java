@@ -32,7 +32,8 @@ public class PracticeCycleService {
     public List<CycleSummary> list(UUID ownerId) {
         return practice.listCycles(ownerId).stream().map(row -> new CycleSummary(
                 row.assignmentId(), new Category(row.categoryCode(), row.categoryName()),
-                row.domain(), row.situation(), row.status(), row.attemptCount(),
+                row.domain(), row.situation(), row.sequenceNumber(), row.cycleNumber(),
+                row.cyclePosition(), row.status(), row.attemptCount(),
                 row.createdAt(), row.updatedAt())).toList();
     }
 
@@ -134,6 +135,7 @@ public class PracticeCycleService {
 
     public record CycleSummary(
             UUID assignmentId, Category targetCategory, String domain, String situation,
+            long sequenceNumber, int cycleNumber, int cyclePosition,
             String status, int attemptCount, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
     }
 

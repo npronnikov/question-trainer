@@ -22,6 +22,15 @@
     PRACTITIONER_METHOD: 'Практический метод',
     HEURISTIC: 'Эвристическая рекомендация'
   };
+  const IDEA_GAP_LABELS = {
+    CYCLE_INCOMPLETE: 'Цикл ещё не завершён',
+    NOT_STARTED: 'Кейс ещё не начат',
+    NOT_VERIFIED: 'Нет проверенной попытки',
+    LEGACY_SCHEMA: 'Оценка потенциала ещё не выполнялась',
+    INCOMPLETE_PROFILE: 'Недостаточно данных для общего балла',
+    INVALID_PROFILE: 'Сохранённый профиль повреждён'
+  };
+  const ideaPotential = window.QH_IDEA_POTENTIAL;
 
   let booted = false;
   let currentUser = null;
@@ -53,6 +62,11 @@
   let practiceEditorBaseAttemptId = null;
   let practiceEditableFields = [];
   let practiceSubmitting = false;
+  let ideaProgress = null;
+  let ideaProgressLoading = false;
+  let selectedIdeaCategory = null;
+  let selectedIdeaMetric = 'overall';
+  let practiceHighlightedAttemptId = null;
   let moderationStatus = 'PENDING_REVIEW';
   let moderationRows = [];
   let selectedCandidate = null;
@@ -827,19 +841,32 @@
   }
 
   function renderPracticeTimeline(attempts) {
-    $('#practice-timeline').innerHTML = attempts.map(attempt => {
+    $('#practice-timeline').innerHTML = attempts.map((attempt, index) => {
       const assessment = attempt.assessment;
       const recommendation = assessment
         ? `${assessment.feedback || ''}${assessment.priorityCorrection?.what ? ` ${assessment.priorityCorrection.what}: ${assessment.priorityCorrection.why}` : ''}`
         : 'Модель оценивает полный цикл…';
+      const verifiedPotential = assessment?.outcome === 'VERIFIED'
+        ? `<details class="practice-attempt-radar" ${(attempt.attemptId === practiceHighlightedAttemptId || index === attempts.length - 1) ? 'open' : ''}>
+            <summary>Паутинка попытки ${attempt.attemptNumber}</summary>
+            ${practiceIdeaPotentialMarkup(assessment, `Попытка ${attempt.attemptNumber}`)}
+          </details>` : '';
       return `<article class="practice-attempt-card">
         <header class="practice-attempt-head"><span>Попытка ${attempt.attemptNumber}</span><span>${escapeHtml(practiceStatusLabel(attempt.status))} · ${escapeHtml(formatDate(attempt.createdAt))}</span></header>
         <div class="practice-attempt-steps">
           ${Object.keys(FIELD_LABELS).map(field => `<section class="practice-attempt-step"><span>${escapeHtml(FIELD_LABELS[field])}</span><p>${escapeHtml(attempt[field])}</p></section>`).join('')}
         </div>
         <footer class="practice-attempt-model"><strong>Рекомендация модели</strong><p>${escapeHtml(recommendation.trim())}</p></footer>
+        ${verifiedPotential}
       </article>`;
     }).join('');
+  }
+
+  function practiceIdeaPotentialMarkup(assessment, title) {
+    if (assessment?.ideaPotential) {
+      return ideaPotential.radarMarkup(assessment.ideaPotential, { title });
+    }
+    return '<p class="idea-potential-legacy">Оценка потенциала ещё не выполнялась.</p>';
   }
 
   function practiceValues() {
@@ -963,6 +990,7 @@
         if (TERMINAL_ATTEMPT_STATUSES.has(practiceAttempt.status)) {
           clearAttemptPoll();
           practiceSubmitting = false;
+          if (practiceAttempt.assessment?.outcome === 'VERIFIED') ideaProgress = null;
           await loadPracticeCycles();
           await selectPracticeCycle(practiceAttempt.assignmentId, { skipFlush: true, focusFeedback: true, afterSubmission: true });
           return;
@@ -1003,6 +1031,7 @@
         <section><span>Категория</span><strong>${fit}</strong><small>${escapeHtml(assessment.categoryFitEvidence || 'Семантический балл не присвоен')}</small></section>
         <section><span>Сила вопроса</span><strong>${strength}</strong><small>${escapeHtml(assessment.confidence ? `Уверенность: ${assessment.confidence}` : 'Семантический балл не присвоен')}</small></section>
       </div>
+      ${assessment.outcome === 'VERIFIED' ? practiceIdeaPotentialMarkup(assessment, `Попытка ${attempt.attemptNumber}`) : ''}
       <p>${escapeHtml(assessment.feedback)}</p>
       ${assessment.strengths?.length ? `<div class="feedback-next"><strong>Что уже хорошо</strong><span>${assessment.strengths.map(escapeHtml).join(' · ')}</span></div>` : ''}
       ${!passed && !unverified ? `<div class="feedback-next"><strong>Приоритетная правка</strong><span>${escapeHtml(assessment.priorityCorrection.what)} — ${escapeHtml(assessment.priorityCorrection.why)}<br><em>${escapeHtml(assessment.priorityCorrection.example)}</em></span></div>` : ''}
@@ -1061,10 +1090,121 @@
     });
   }
 
+  function ideaProgressAvailability(progress) {
+    if (!progress.lastAnsweredCycle) {
+      const started = progress.categories.filter(category =>
+        category.points.some(point => point.cycleNumber === 1 && point.attemptId)).length;
+      const remaining = Math.max(0, 7 - started);
+      return remaining
+        ? `До первого полного цикла осталось категорий: ${remaining}.`
+        : 'Все семь кейсов созданы. Завершите их проверку, чтобы сохранить первый цикл.';
+    }
+    if (!progress.comparisonAvailable) {
+      return 'Первый цикл сохранён. Сравнение появится после второго полного цикла.';
+    }
+    return `Доступно сравнение циклов: ${progress.lastAnsweredCycle}. Выберите категорию и показатель.`;
+  }
+
+  async function openIdeaProgress() {
+    const dialog = $('#idea-progress-dialog');
+    dialog.showModal();
+    if (!ideaProgress && !ideaProgressLoading) await loadIdeaProgress();
+    else if (ideaProgress) renderIdeaProgress();
+  }
+
+  async function loadIdeaProgress(force = false) {
+    if (ideaProgressLoading || ideaProgress && !force) return;
+    ideaProgressLoading = true;
+    $('#idea-progress-content').hidden = true;
+    $('#idea-progress-retry').hidden = true;
+    $('#idea-progress-status').textContent = 'Собираем сохранённые оценки…';
+    try {
+      ideaProgress = await api('/practice/idea-progress');
+      selectedIdeaCategory = ideaProgress.categories.some(category => category.code === selectedIdeaCategory)
+        ? selectedIdeaCategory : ideaProgress.categories[0]?.code || null;
+      renderIdeaProgress();
+    } catch (error) {
+      $('#idea-progress-status').textContent = `Не удалось загрузить динамику: ${error.message}`;
+      $('#idea-progress-retry').hidden = false;
+    } finally {
+      ideaProgressLoading = false;
+    }
+  }
+
+  function renderIdeaProgress() {
+    if (!ideaProgress) return;
+    $('#idea-progress-status').textContent = ideaProgressAvailability(ideaProgress);
+    $('#idea-progress-content').hidden = false;
+    $('#idea-progress-retry').hidden = true;
+    $('#idea-progress-categories').innerHTML = ideaProgress.categories.map((category, index) => `
+      <button type="button" role="tab" data-idea-category="${escapeHtml(category.code)}"
+        aria-selected="${category.code === selectedIdeaCategory}">
+        <span>${String(index + 1).padStart(2, '0')}</span>${escapeHtml(category.name)}
+      </button>`).join('');
+    $('#idea-progress-metrics').innerHTML = ideaPotential.METRICS.map(metric => `
+      <button type="button" data-idea-metric="${escapeHtml(metric.key)}"
+        aria-pressed="${metric.key === selectedIdeaMetric}">${escapeHtml(metric.label)}</button>`).join('');
+    $$('#idea-progress-categories button').forEach(button => button.addEventListener('click', () => {
+      selectedIdeaCategory = button.dataset.ideaCategory;
+      renderIdeaProgress();
+    }));
+    $$('#idea-progress-metrics button').forEach(button => button.addEventListener('click', () => {
+      selectedIdeaMetric = button.dataset.ideaMetric;
+      renderIdeaProgress();
+    }));
+    renderIdeaProgressChart();
+  }
+
+  function renderIdeaProgressChart() {
+    const category = ideaProgress?.categories.find(item => item.code === selectedIdeaCategory);
+    if (!category) {
+      $('#idea-progress-chart').innerHTML = '<p>Пока нет категорий для сравнения.</p>';
+      return;
+    }
+    $('#idea-progress-chart').innerHTML = ideaPotential.trendMarkup(category, selectedIdeaMetric);
+    const gaps = category.points.filter(point => point.gapReason).map(point =>
+      `<li><strong>Цикл ${point.cycleNumber}</strong><span>${escapeHtml(IDEA_GAP_LABELS[point.gapReason] || point.gapReason)}</span></li>`).join('');
+    if (gaps) $('#idea-progress-chart').insertAdjacentHTML('beforeend', `<ul class="idea-progress-gaps">${gaps}</ul>`);
+    $$('.idea-trend-point', $('#idea-progress-chart')).forEach(point => {
+      const activate = () => showIdeaProgressPoint(category, point.dataset.attemptId);
+      point.addEventListener('click', activate);
+      point.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          activate();
+        }
+      });
+    });
+  }
+
+  function showIdeaProgressPoint(category, attemptId) {
+    const point = category.points.find(item => item.attemptId === attemptId);
+    if (!point) return;
+    const completedDate = point.completedAt
+      ? `<time datetime="${escapeHtml(point.completedAt)}">Проверено ${escapeHtml(String(point.completedAt).slice(0, 10))}</time>`
+      : '';
+    const potential = point.ideaPotential
+      ? ideaPotential.radarMarkup(point.ideaPotential, { title: `${category.name}, цикл ${point.cycleNumber}` })
+      : `<p>${escapeHtml(IDEA_GAP_LABELS[point.gapReason] || 'Оценка недоступна')}</p>`;
+    $('#idea-progress-detail').innerHTML = `
+      <header><span>Цикл ${point.cycleNumber} · ${escapeHtml(category.name)}</span><h3>${escapeHtml(point.situation || 'Исходный кейс')}</h3>${completedDate}</header>
+      ${potential}
+      ${point.assignmentId ? '<button class="secondary-button" id="idea-progress-open-case" type="button">Открыть кейс</button>' : ''}`;
+    if (point.assignmentId) $('#idea-progress-open-case').addEventListener('click', async () => {
+      practiceHighlightedAttemptId = point.attemptId;
+      $('#idea-progress-dialog').close();
+      await selectPracticeCycle(point.assignmentId);
+      document.querySelector('.practice-attempt-radar[open]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+
   function bindPractice() {
     $('#start-practice').addEventListener('click', startPractice);
     $('#new-practice').addEventListener('click', startPractice);
     $('#practice-hint-toggle').addEventListener('click', togglePracticeHint);
+    $('#practice-idea-progress').addEventListener('click', openIdeaProgress);
+    $('#idea-progress-close').addEventListener('click', () => $('#idea-progress-dialog').close());
+    $('#idea-progress-retry').addEventListener('click', () => loadIdeaProgress(true));
     $('#practice-form').addEventListener('submit', submitPractice);
     $('#practice-form').addEventListener('input', () => {
       updatePracticeProgress();

@@ -156,6 +156,45 @@ class PracticeAssignmentTest {
     }
 
     @Test
+    void assignmentsPersistTwoCanonicalSevenCaseCyclesPerOwner() throws Exception {
+        List<String> categories = List.of(
+                "INVERSION", "HYPERBOLE", "CROSS_DISCIPLINE", "BACKCASTING",
+                "PROVOCATION", "REFRAMING", "SIMPLIFICATION");
+        categories.forEach(category -> {
+            publishForPractice(category, 0);
+            publishForPractice(category, 1);
+        });
+
+        List<UUID> assignments = new ArrayList<>();
+        for (int index = 0; index < 14; index++) {
+            assignments.add(assignment("practice-alice"));
+        }
+
+        List<java.util.Map<String, Object>> coordinates = jdbc.queryForList("""
+                SELECT sequence_number, cycle_number, cycle_position, target_category_code
+                FROM practice_assignment
+                WHERE owner_id=?
+                ORDER BY sequence_number
+                """, alice.id());
+        assertThat(coordinates).extracting(row -> row.get("TARGET_CATEGORY_CODE"))
+                .containsExactlyElementsOf(java.util.stream.Stream.concat(
+                        categories.stream(), categories.stream()).toList());
+        assertThat(coordinates).extracting(row -> ((Number) row.get("SEQUENCE_NUMBER")).longValue())
+                .containsExactly(1L, 2L, 3L, 4L, 5L, 6L, 7L,
+                        8L, 9L, 10L, 11L, 12L, 13L, 14L);
+        assertThat(coordinates).extracting(row -> ((Number) row.get("CYCLE_NUMBER")).intValue())
+                .containsExactly(1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2);
+        assertThat(coordinates).extracting(row -> ((Number) row.get("CYCLE_POSITION")).intValue())
+                .containsExactly(1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4, 5, 6, 7);
+
+        publishForPractice("INVERSION", 2);
+        UUID bobAssignment = assignment("practice-bob");
+        assertThat(jdbc.queryForObject(
+                "SELECT sequence_number FROM practice_assignment WHERE id=?",
+                Long.class, bobAssignment)).isEqualTo(1L);
+    }
+
+    @Test
     void assignmentReadRemainsOwnerOnly() throws Exception {
         publishForPractice("INVERSION", 0);
         UUID assignmentId = assignment("practice-alice");

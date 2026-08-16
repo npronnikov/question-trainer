@@ -69,6 +69,9 @@ class PracticeCycleHistoryTest {
         mvc.perform(get("/api/practice/cycles").with(user("history-alice")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].assignmentId").value(assignment.toString()))
+                .andExpect(jsonPath("$[0].sequenceNumber").value(1))
+                .andExpect(jsonPath("$[0].cycleNumber").value(1))
+                .andExpect(jsonPath("$[0].cyclePosition").value(1))
                 .andExpect(jsonPath("$[0].status").value("DRAFT"))
                 .andExpect(jsonPath("$[0].attemptCount").value(0));
 

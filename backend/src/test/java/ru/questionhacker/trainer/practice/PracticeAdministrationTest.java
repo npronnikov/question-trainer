@@ -85,8 +85,8 @@ class PracticeAdministrationTest {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         UUID draftAssignment = UUID.randomUUID();
         UUID assessedAssignment = UUID.randomUUID();
-        insertAssignment(draftAssignment, now);
-        insertAssignment(assessedAssignment, now);
+        insertAssignment(draftAssignment, now, 1);
+        insertAssignment(assessedAssignment, now, 2);
         jdbc.update("""
                 INSERT INTO practice_draft(
                   assignment_id, owner_id, base_attempt_id, question_text,
@@ -119,14 +119,15 @@ class PracticeAdministrationTest {
                 """, UUID.randomUUID(), attempt, now);
     }
 
-    private void insertAssignment(UUID id, OffsetDateTime now) {
+    private void insertAssignment(UUID id, OffsetDateTime now, int sequenceNumber) {
         jdbc.update("""
                 INSERT INTO practice_assignment(
                   id, owner_id, scenario_id, target_category_code, domain_text,
-                  situation_text, hint_text, guidance_text, created_at
+                  situation_text, hint_text, guidance_text, created_at,
+                  sequence_number, cycle_number, cycle_position
                 ) VALUES (?, ?, NULL, 'INVERSION', 'Домен', 'Ситуация',
-                          'Подсказка', 'Ориентир', ?)
-                """, id, owner.id(), now);
+                          'Подсказка', 'Ориентир', ?, ?, 1, ?)
+                """, id, owner.id(), now, sequenceNumber, sequenceNumber);
     }
 
     private int count(String table) {

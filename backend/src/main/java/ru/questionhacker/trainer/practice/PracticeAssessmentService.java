@@ -1,5 +1,7 @@
 package ru.questionhacker.trainer.practice;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -37,7 +39,7 @@ public class PracticeAssessmentService {
 
     private final PracticeRepository practice;
     private final PracticeAssessmentGateway gateway;
-    private final ModelAssessmentV2Parser parser;
+    private final ModelAssessmentV3Parser parser;
     private final ExecutorService executor;
     private final ObjectMapper json;
     private final PracticeEventRegistry events;
@@ -46,7 +48,7 @@ public class PracticeAssessmentService {
     @Autowired
     public PracticeAssessmentService(PracticeRepository practice,
                                      PracticeAssessmentGateway gateway,
-                                     ModelAssessmentV2Parser parser,
+                                     ModelAssessmentV3Parser parser,
                                      ExecutorService executor,
                                      ObjectMapper json,
                                      PracticeEventRegistry events) {
@@ -55,7 +57,7 @@ public class PracticeAssessmentService {
 
     PracticeAssessmentService(PracticeRepository practice,
                               PracticeAssessmentGateway gateway,
-                              ModelAssessmentV2Parser parser,
+                              ModelAssessmentV3Parser parser,
                               ExecutorService executor,
                               ObjectMapper json,
                               PracticeEventRegistry events,
@@ -246,7 +248,7 @@ public class PracticeAssessmentService {
                     attempt.situation(), attempt.categoryCode(), attempt.guidance(),
                     attempt.question(), attempt.rationale(), attempt.solution()),
                     attempt.requestedModel());
-            ModelAssessmentV2 assessment = parser.parse(result.json(), attempt.categoryCode());
+            ModelAssessmentV3 assessment = parser.parse(result.json(), attempt.categoryCode());
             AssessmentDecision decision = decide(assessment);
             if ("UNVERIFIED".equals(decision.status())) {
                 saveLowConfidence(attempt, result.modelId(), elapsedMillis(started));
@@ -260,7 +262,7 @@ public class PracticeAssessmentService {
         }
     }
 
-    static AssessmentDecision decide(ModelAssessmentV2 assessment) {
+    static AssessmentDecision decide(ModelAssessmentV3 assessment) {
         if ("LOW".equals(assessment.confidence())) {
             return new AssessmentDecision("UNVERIFIED", List.of());
         }
@@ -288,24 +290,37 @@ public class PracticeAssessmentService {
     }
 
     private void saveVerified(PracticeRepository.AttemptRow attempt,
-                              ModelAssessmentV2 value, AssessmentDecision decision,
+                              ModelAssessmentV3 value, AssessmentDecision decision,
                               String modelId, long latency) throws JsonProcessingException {
         var correction = value.priorityCorrection();
         String completeness = chainComplete(value) ? "PASS" : "FAIL";
+        BigDecimal overall = ideaPotentialScore(value.ideaPotential().dimensions());
         var row = new PracticeRepository.AssessmentRow(
                 UUID.randomUUID(), attempt.id(), "VERIFIED", completeness,
                 json.writeValueAsString(value.chain().steps()),
                 value.categoryFit().score(), value.categoryFit().evidence(),
                 value.categoryFit().confusedWith(), value.questionStrength().score(),
                 json.writeValueAsString(value.questionStrength().dimensions()),
-                value.confidence(), json.writeValueAsString(value.strengths()),
+                value.confidence(), overall,
+                json.writeValueAsString(value.ideaPotential().dimensions()),
+                json.writeValueAsString(value.strengths()),
                 correction.what(), correction.why(), correction.example(),
                 json.writeValueAsString(decision.fieldsToRevise()), value.feedback(),
                 modelId, latency, null, OffsetDateTime.now(clock));
         publishIfSaved(row, decision.status());
     }
 
-    private boolean chainComplete(ModelAssessmentV2 value) {
+    private BigDecimal ideaPotentialScore(List<ModelAssessmentV3.IdeaDimension> dimensions) {
+        List<Integer> scores = dimensions.stream()
+                .filter(dimension -> "SCORED".equals(dimension.status()))
+                .map(ModelAssessmentV3.IdeaDimension::score)
+                .toList();
+        if (scores.size() != 4) return null;
+        return BigDecimal.valueOf(scores.stream().mapToInt(Integer::intValue).sum())
+                .divide(BigDecimal.valueOf(4), 2, RoundingMode.UNNECESSARY);
+    }
+
+    private boolean chainComplete(ModelAssessmentV3 value) {
         return "PASS".equals(step(value.chain().steps(), "question").status())
                 && !"CONTRADICTS".equals(step(value.chain().steps(), "rationale").status())
                 && "PASS".equals(step(value.chain().steps(), "solution").status());
@@ -319,7 +334,7 @@ public class PracticeAssessmentService {
                 new ModelAssessmentV2.StepResult("solution", "PASS", "Поле принято сервером."));
         var row = new PracticeRepository.AssessmentRow(
                 UUID.randomUUID(), attempt.id(), "UNVERIFIED", "PASS", write(steps),
-                null, null, null, null, "[]", null, "[]",
+                null, null, null, null, "[]", null, null, null, "[]",
                 "Повторить семантическую проверку", "Модель не вернула проверяемый результат",
                 "Отправьте ту же попытку на повторную проверку позднее.",
                 "[]", "Техническая семантическая оценка недоступна; сервер не присваивал баллы и не ставил зачёт.",
@@ -335,7 +350,7 @@ public class PracticeAssessmentService {
                 new ModelAssessmentV2.StepResult("solution", "PASS", "Поле принято сервером."));
         var row = new PracticeRepository.AssessmentRow(
                 UUID.randomUUID(), attempt.id(), "UNVERIFIED", "PASS", write(steps),
-                null, null, null, null, "[]", null, "[]",
+                null, null, null, null, "[]", null, null, null, "[]",
                 "Повторить семантическую проверку", "Уверенность модели недостаточна для зачёта",
                 "Повторите ту же попытку позднее или выберите другую модель.",
                 "[]", "Модель вернула низкую уверенность; сервер не назначил правку и не поставил зачёт.",
@@ -354,6 +369,7 @@ public class PracticeAssessmentService {
                 row.outcome(), row.completenessStatus(), assessmentSteps(row),
                 row.categoryFitScore(), row.categoryFitEvidence(), row.confusedWith(),
                 row.questionStrengthScore(), read(row.strengthDimensionsJson(), new TypeReference<>() { }),
+                ideaPotential(row),
                 row.confidence(), read(row.strengthsJson(), new TypeReference<>() { }),
                 new Correction(row.correctionWhat(), row.correctionWhy(), row.correctionExample()),
                 revisionFields(row),
@@ -379,6 +395,20 @@ public class PracticeAssessmentService {
                 new ModelAssessmentV2.StepResult("rationale", rationaleStatus,
                         answer.evidence() + " " + reasoning.evidence()),
                 new ModelAssessmentV2.StepResult("solution", solution.status(), solution.evidence()));
+    }
+
+    private IdeaPotentialView ideaPotential(PracticeRepository.AttemptRow row) {
+        if (!ModelAssessmentV3Parser.SCHEMA_VERSION.equals(row.schemaVersion())
+                || row.ideaPotentialDimensionsJson() == null) return null;
+        try {
+            List<ModelAssessmentV3.IdeaDimension> dimensions = read(
+                    row.ideaPotentialDimensionsJson(), new TypeReference<>() { });
+            ModelAssessmentV3Parser.validateIdeaDimensions(dimensions);
+            return new IdeaPotentialView(
+                    dimensions, row.ideaPotentialScore(), row.ideaPotentialScore() != null);
+        } catch (IllegalArgumentException | IllegalStateException error) {
+            return null;
+        }
     }
 
     private ModelAssessmentV2.StepResult legacyStep(
@@ -555,6 +585,7 @@ public class PracticeAssessmentService {
             String confusedWith,
             Integer questionStrengthScore,
             List<ModelAssessmentV2.StrengthDimension> strengthDimensions,
+            IdeaPotentialView ideaPotential,
             String confidence,
             List<String> strengths,
             Correction priorityCorrection,
@@ -562,6 +593,12 @@ public class PracticeAssessmentService {
             String feedback,
             String modelId,
             String failureReason) {
+    }
+
+    public record IdeaPotentialView(
+            List<ModelAssessmentV3.IdeaDimension> dimensions,
+            BigDecimal overallScore,
+            boolean complete) {
     }
 
     public record Correction(String what, String why, String example) {

@@ -18,15 +18,17 @@ import org.springframework.stereotype.Component;
 public class PracticePromptCatalog implements ApplicationRunner {
 
     public static final String PROMPT_KEY = "practice-assessment";
-    public static final int PROMPT_VERSION = 2;
+    public static final int PROMPT_VERSION = 3;
 
     private final JdbcTemplate jdbc;
     private final String template;
+    private final String previousTemplate;
     private final String legacyTemplate;
 
     public PracticePromptCatalog(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
-        this.template = read("prompts/practice-assessment-v2.md");
+        this.template = read("prompts/practice-assessment-v3.md");
+        this.previousTemplate = read("prompts/practice-assessment-v2.md");
         this.legacyTemplate = read("prompts/practice-assessment-v1.md");
     }
 
@@ -41,9 +43,19 @@ public class PracticePromptCatalog implements ApplicationRunner {
         jdbc.update("""
                 MERGE INTO prompt_version(
                   prompt_key, version_number, schema_version, content_hash, active, created_at
+                ) KEY(prompt_key, version_number) VALUES (?, ?, ?, ?, FALSE, ?)
+                """, PROMPT_KEY, 2, ModelAssessmentV2Parser.SCHEMA_VERSION,
+                sha256(previousTemplate), OffsetDateTime.now(ZoneOffset.UTC));
+        jdbc.update("""
+                MERGE INTO prompt_version(
+                  prompt_key, version_number, schema_version, content_hash, active, created_at
                 ) KEY(prompt_key, version_number) VALUES (?, ?, ?, ?, TRUE, ?)
-                """, PROMPT_KEY, PROMPT_VERSION, ModelAssessmentV2Parser.SCHEMA_VERSION,
+                """, PROMPT_KEY, PROMPT_VERSION, ModelAssessmentV3Parser.SCHEMA_VERSION,
                 sha256(template), OffsetDateTime.now(ZoneOffset.UTC));
+        jdbc.update("""
+                UPDATE prompt_version SET active=FALSE
+                WHERE prompt_key=? AND version_number<>?
+                """, PROMPT_KEY, PROMPT_VERSION);
     }
 
     public String render(PracticeAssessmentGateway.Input input) {

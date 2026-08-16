@@ -28,16 +28,24 @@ public class PracticeController {
     private final PracticeAssignmentService assignments;
     private final PracticeAssessmentService assessments;
     private final PracticeCycleService cycles;
+    private final PracticeIdeaProgressService ideaProgress;
     private final AuthService auth;
 
     public PracticeController(PracticeAssignmentService assignments,
                               PracticeAssessmentService assessments,
                               PracticeCycleService cycles,
+                              PracticeIdeaProgressService ideaProgress,
                               AuthService auth) {
         this.assignments = assignments;
         this.assessments = assessments;
         this.cycles = cycles;
+        this.ideaProgress = ideaProgress;
         this.auth = auth;
+    }
+
+    @GetMapping("/idea-progress")
+    public PracticeIdeaProgressService.ProgressView ideaProgress() {
+        return ideaProgress.get(auth.requireCurrentUser().id());
     }
 
     @GetMapping("/cycles")

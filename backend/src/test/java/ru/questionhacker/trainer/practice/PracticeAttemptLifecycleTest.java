@@ -90,12 +90,37 @@ class PracticeAttemptLifecycleTest {
         assertThat(terminal.path("assessment").path("categoryFitScore").asInt()).isEqualTo(2);
         assertThat(terminal.path("assessment").path("questionStrengthScore").asInt()).isEqualTo(3);
         assertThat(terminal.path("assessment").path("steps")).hasSize(3);
+        assertThat(terminal.at("/assessment/ideaPotential/overallScore").decimalValue())
+                .isEqualByComparingTo("3.00");
+        assertThat(terminal.at("/assessment/ideaPotential/dimensions")).hasSize(4);
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM practice_assessment
                 WHERE attempt_id=? AND outcome='VERIFIED'
-                  AND prompt_version=2 AND schema_version='practice-assessment-v2'
+                  AND prompt_version=3 AND schema_version='practice-assessment-v3'
+                  AND idea_potential_score=3.00
                   AND model_id='test-model'
                 """, Integer.class, attempt)).isEqualTo(1);
+    }
+
+    @Test
+    void insufficientFeasibilityKeepsKnownAxesWithoutInventingOverall() throws Exception {
+        String incomplete = validAssessment(2, 3, "HIGH", null).replace(
+                "{\"name\":\"feasibility\",\"status\":\"SCORED\",\"score\":3,\"evidence\":\"Предложен недельный тест\"}",
+                "{\"name\":\"feasibility\",\"status\":\"INSUFFICIENT_CONTEXT\",\"score\":null,\"evidence\":\"Ресурсы кейса не заданы\"}");
+        when(gateway.assess(any(), anyString())).thenReturn(
+                new PracticeAssessmentGateway.Result(incomplete, "test-model"));
+        UUID attempt = submit("assessment-alice", assignment("assessment-alice"), "key-incomplete");
+
+        JsonNode terminal = awaitTerminal("assessment-alice", attempt);
+
+        assertThat(terminal.path("status").asText()).isEqualTo("PASSED");
+        assertThat(terminal.at("/assessment/ideaPotential/complete").asBoolean()).isFalse();
+        assertThat(terminal.at("/assessment/ideaPotential/dimensions")).hasSize(4);
+        assertThat(terminal.at("/assessment/ideaPotential/overallScore").isMissingNode()
+                || terminal.at("/assessment/ideaPotential/overallScore").isNull()).isTrue();
+        assertThat(jdbc.queryForObject("""
+                SELECT idea_potential_score IS NULL FROM practice_assessment WHERE attempt_id=?
+                """, Boolean.class, attempt)).isTrue();
     }
 
     @Test
@@ -589,7 +614,7 @@ class PracticeAttemptLifecycleTest {
     private String validAssessment(int fit, int strength, String confidence, String verdict) {
         return """
                 {
-                  "schemaVersion":"practice-assessment-v2",
+                  "schemaVersion":"practice-assessment-v3",
                   "chain":{"steps":[
                     {"field":"question","status":"PASS","evidence":"Названы три действия провала"},
                     {"field":"rationale","status":"SUPPORTS","evidence":"Причины обращены в профилактику"},
@@ -601,6 +626,12 @@ class PracticeAttemptLifecycleTest {
                     {"name":"depth","met":true,"evidence":"Ищутся причины"},
                     {"name":"unexpectedness","met":true,"evidence":"Цель перевёрнута"},
                     {"name":"productivity","met":%s,"evidence":"Можно вывести профилактику"}
+                  ]},
+                  "ideaPotential":{"dimensions":[
+                    {"name":"impact","status":"SCORED","score":4,"evidence":"Меняется способ запуска"},
+                    {"name":"questionAlignment","status":"SCORED","score":3,"evidence":"Решение отвечает на вопрос"},
+                    {"name":"disruption","status":"SCORED","score":2,"evidence":"Есть переворот привычной цели"},
+                    {"name":"feasibility","status":"SCORED","score":3,"evidence":"Предложен недельный тест"}
                   ]},
                   "confidence":"%s","strengths":["Ясная инверсия"],
                   "priorityCorrection":{"what":"Уточнить измеримость","why":"Так проверка станет точнее","example":"Какие три наблюдаемых действия?"},

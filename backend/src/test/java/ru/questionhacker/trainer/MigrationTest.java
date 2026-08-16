@@ -71,6 +71,28 @@ class MigrationTest {
     }
 
     @Test
+    void flywayCreatesStablePracticeCyclesAndIdeaPotentialStorage() {
+        Integer assignmentColumns = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE UPPER(TABLE_NAME)='PRACTICE_ASSIGNMENT'
+                  AND UPPER(COLUMN_NAME) IN (
+                    'SEQUENCE_NUMBER', 'CYCLE_NUMBER', 'CYCLE_POSITION'
+                  )
+                  AND IS_NULLABLE='NO'
+                """, Integer.class);
+        Integer assessmentColumns = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE UPPER(TABLE_NAME)='PRACTICE_ASSESSMENT'
+                  AND UPPER(COLUMN_NAME) IN (
+                    'IDEA_POTENTIAL_SCORE', 'IDEA_POTENTIAL_DIMENSIONS_JSON'
+                  )
+                """, Integer.class);
+
+        assertThat(assignmentColumns).isEqualTo(3);
+        assertThat(assessmentColumns).isEqualTo(2);
+    }
+
+    @Test
     void flywayCreatesScenarioModerationTables() {
         Integer count = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
@@ -123,17 +145,20 @@ class MigrationTest {
     }
 
     @Test
-    void promptCatalogKeepsLegacySchemaAndActivatesThreeFieldSchema() {
+    void promptCatalogKeepsLegacySchemasAndActivatesIdeaPotentialSchema() {
         assertThat(jdbc.queryForList("""
                 SELECT schema_version FROM prompt_version
                 WHERE prompt_key='practice-assessment'
                 ORDER BY version_number
                 """, String.class))
-                .containsExactly("practice-assessment-v1", "practice-assessment-v2");
+                .containsExactly(
+                        "practice-assessment-v1",
+                        "practice-assessment-v2",
+                        "practice-assessment-v3");
         assertThat(jdbc.queryForObject("""
                 SELECT schema_version FROM prompt_version
                 WHERE prompt_key='practice-assessment' AND active=TRUE
-                """, String.class)).isEqualTo("practice-assessment-v2");
+                """, String.class)).isEqualTo("practice-assessment-v3");
     }
 
     @Test

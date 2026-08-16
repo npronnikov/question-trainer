@@ -35,11 +35,27 @@ class PracticeAssessmentDecisionTest {
         assertThat(decision.fieldsToRevise()).isEmpty();
     }
 
-    private ModelAssessmentV2 assessment(String questionStatus, String rationaleStatus,
+    @Test
+    void ideaPotentialNeverChangesTheBackendVerdict() {
+        var weakIdea = assessment("PASS", "SUPPORTS", "PASS", 2, 3, "HIGH", 0);
+        var strongIdea = assessment("PASS", "SUPPORTS", "PASS", 2, 3, "HIGH", 4);
+
+        assertThat(PracticeAssessmentService.decide(weakIdea))
+                .isEqualTo(PracticeAssessmentService.decide(strongIdea));
+    }
+
+    private ModelAssessmentV3 assessment(String questionStatus, String rationaleStatus,
                                          String solutionStatus, int fit, int strength,
                                          String confidence) {
-        return new ModelAssessmentV2(
-                ModelAssessmentV2Parser.SCHEMA_VERSION,
+        return assessment(questionStatus, rationaleStatus, solutionStatus,
+                fit, strength, confidence, 2);
+    }
+
+    private ModelAssessmentV3 assessment(String questionStatus, String rationaleStatus,
+                                         String solutionStatus, int fit, int strength,
+                                         String confidence, int ideaScore) {
+        return new ModelAssessmentV3(
+                ModelAssessmentV3Parser.SCHEMA_VERSION,
                 new ModelAssessmentV2.Chain(List.of(
                         new ModelAssessmentV2.StepResult("question", questionStatus, "question evidence"),
                         new ModelAssessmentV2.StepResult("rationale", rationaleStatus, "rationale evidence"),
@@ -50,6 +66,11 @@ class PracticeAssessmentDecisionTest {
                         dimension("depth", strength >= 2),
                         dimension("unexpectedness", strength >= 3),
                         dimension("productivity", strength >= 4))),
+                new ModelAssessmentV3.IdeaPotential(List.of(
+                        ideaDimension("impact", ideaScore),
+                        ideaDimension("questionAlignment", ideaScore),
+                        ideaDimension("disruption", ideaScore),
+                        ideaDimension("feasibility", ideaScore))),
                 confidence, List.of(),
                 new ModelAssessmentV2.PriorityCorrection("what", "why", "example"),
                 "feedback");
@@ -57,5 +78,9 @@ class PracticeAssessmentDecisionTest {
 
     private ModelAssessmentV2.StrengthDimension dimension(String name, boolean met) {
         return new ModelAssessmentV2.StrengthDimension(name, met, "evidence");
+    }
+
+    private ModelAssessmentV3.IdeaDimension ideaDimension(String name, int score) {
+        return new ModelAssessmentV3.IdeaDimension(name, "SCORED", score, "evidence");
     }
 }

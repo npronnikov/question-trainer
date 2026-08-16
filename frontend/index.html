@@ -144,6 +144,7 @@
             <div class="practice-history-tools" id="practice-history-tools">
               <div class="practice-history-actions">
                 <button class="secondary-button" id="new-practice" type="button">＋ Новая ситуация</button>
+                <button class="secondary-button" id="practice-idea-progress" type="button" aria-haspopup="dialog" aria-controls="idea-progress-dialog">↗ Динамика идей</button>
               </div>
               <p class="practice-availability" id="practice-availability" role="status" aria-live="polite"></p>
               <div class="practice-cycle-list" id="practice-cycle-list" role="list" aria-label="История полного цикла"></div>
@@ -259,6 +260,22 @@
     <dialog class="confirm-dialog" id="delete-session-dialog"><form method="dialog" id="delete-session-form"><p class="eyebrow">УДАЛЕНИЕ ДИАЛОГА</p><h2>Удалить диалог?</h2><p>Диалог <strong id="delete-dialog-name"></strong> будет удалён.</p><div class="confirm-dialog-actions"><button class="secondary-button" id="delete-session-cancel" type="button">Отмена</button><button class="danger-button" id="delete-session-confirm" type="submit">Удалить</button></div></form></dialog>
     <dialog class="confirm-dialog" id="reset-trainer-dialog" aria-labelledby="reset-trainer-title"><form method="dialog" id="reset-trainer-form"><p class="eyebrow">СБРОС ПРОГРЕССА</p><h2 id="reset-trainer-title">Начать тренажёр заново?</h2><p>Ваши ответы, освоение категорий и история ошибок будут удалены без возможности восстановления.</p><div class="confirm-dialog-actions"><button class="secondary-button" id="reset-trainer-cancel" type="button">Отмена</button><button class="danger-button" id="reset-trainer-confirm" type="submit">Сбросить прогресс</button></div></form></dialog>
     <dialog class="confirm-dialog" id="clear-practice-dialog" aria-labelledby="clear-practice-title"><form method="dialog" id="clear-practice-form"><p class="eyebrow">ОЧИСТКА ПРАКТИКИ</p><h2 id="clear-practice-title">Удалить все циклы?</h2><p>Ответы, попытки, оценки и черновики <strong>всех пользователей</strong> будут удалены без возможности восстановления. Каталог ситуаций сохранится.</p><div class="confirm-dialog-actions"><button class="secondary-button" id="clear-practice-cancel" type="button">Отмена</button><button id="clear-practice-confirm" class="danger-button" type="submit">Удалить все циклы</button></div></form></dialog>
+    <dialog class="idea-progress-dialog" id="idea-progress-dialog" aria-labelledby="idea-progress-title">
+      <div class="idea-progress-shell">
+        <header class="idea-progress-head">
+          <div><p class="eyebrow">ТРАЕКТОРИЯ МЫШЛЕНИЯ</p><h2 id="idea-progress-title">Динамика идей</h2></div>
+          <button class="icon-button" id="idea-progress-close" type="button" aria-label="Закрыть динамику">×</button>
+        </header>
+        <p class="idea-progress-status" id="idea-progress-status" role="status" aria-live="polite">Данные загрузятся при открытии.</p>
+        <button class="secondary-button" id="idea-progress-retry" type="button" hidden>Повторить загрузку</button>
+        <div class="idea-progress-controls" id="idea-progress-content" hidden>
+          <div class="idea-progress-categories" id="idea-progress-categories" role="tablist" aria-label="Категория мышления"></div>
+          <div class="idea-progress-metrics" id="idea-progress-metrics" role="group" aria-label="Показатель графика"></div>
+          <section class="idea-progress-chart" id="idea-progress-chart" aria-label="График динамики"></section>
+          <aside class="idea-progress-detail" id="idea-progress-detail" aria-live="polite"><p>Выберите точку на графике, чтобы увидеть исходный кейс и доказательства.</p></aside>
+        </div>
+      </div>
+    </dialog>
     <dialog class="confirm-dialog acp-status-dialog" id="acp-status-dialog" aria-labelledby="acp-dialog-title" aria-describedby="acp-dialog-reason">
       <form method="dialog">
         <span class="confirm-dialog-mark" aria-hidden="true">?</span>
@@ -277,6 +294,7 @@
   <script src="auth.js"></script>
   <script src="coach-stream.js"></script>
   <script src="practice-retry.js"></script>
+  <script src="idea-potential.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
