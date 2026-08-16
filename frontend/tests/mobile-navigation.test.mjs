@@ -44,6 +44,7 @@ test('mobile navigation is a safe-area bottom bar without horizontal scrolling',
 
   assert.match(css, /--mobile-nav-height:\s*78px/);
   assert.match(css, /\.nav-icon\s*\{[^}]*display:\s*none/);
+  assert.match(mobile, /\.topbar\s*\{[^}]*backdrop-filter:\s*none/);
   assert.match(mobile, /\.main-nav\s*\{[^}]*left:\s*0;[^}]*right:\s*0;[^}]*bottom:\s*0;[^}]*width:\s*100%/);
   assert.doesNotMatch(mobile, /\.main-nav\s*\{[^}]*overflow-x:\s*auto/);
   assert.match(mobile, /env\(safe-area-inset-bottom/);

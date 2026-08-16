@@ -629,7 +629,7 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
   .auth-card { padding: 26px 20px; border-radius: 22px; }
   .auth-card h1 { font-size: clamp(40px, 13vw, 58px); }
   .shell { width: min(100% - 28px, 1240px); }
-  .topbar { min-height: 66px; padding: 0 15px; }
+  .topbar { min-height: 66px; padding: 0 15px; backdrop-filter: none; }
   .brand-copy small { display: none; }
   .main-nav {
     left: 0; right: 0; bottom: 0; transform: none;
