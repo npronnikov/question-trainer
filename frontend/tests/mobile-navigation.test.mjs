@@ -37,3 +37,18 @@ test('route changes synchronize visual and semantic current state', async () => 
   assert.match(app, /link\.toggleAttribute\('aria-current', active\)/);
   assert.match(app, /if \(active\) link\.setAttribute\('aria-current', 'page'\)/);
 });
+
+test('mobile navigation is a safe-area bottom bar without horizontal scrolling', async () => {
+  const css = await fs.readFile(new URL('styles.css', frontend), 'utf8');
+  const mobile = css.slice(css.indexOf('@media (max-width: 720px)'), css.indexOf('@media (prefers-reduced-motion: reduce)'));
+
+  assert.match(css, /--mobile-nav-height:\s*78px/);
+  assert.match(css, /\.nav-icon\s*\{[^}]*display:\s*none/);
+  assert.match(mobile, /\.main-nav\s*\{[^}]*left:\s*0;[^}]*right:\s*0;[^}]*bottom:\s*0;[^}]*width:\s*100%/);
+  assert.doesNotMatch(mobile, /\.main-nav\s*\{[^}]*overflow-x:\s*auto/);
+  assert.match(mobile, /env\(safe-area-inset-bottom/);
+  assert.match(mobile, /\.nav-link\s*\{[^}]*min-width:\s*0;[^}]*min-height:\s*44px/);
+  assert.match(mobile, /\.nav-link\.is-active \.nav-icon\s*\{[^}]*background:\s*var\(--ink\)/);
+  assert.match(mobile, /\.composer\s*\{[^}]*bottom:\s*calc\(var\(--mobile-nav-offset\) \+ 8px\)/);
+  assert.match(mobile, /100dvh/);
+});

@@ -336,8 +336,8 @@ test('practice and coach are independent hash routes', async () => {
   const app = await fs.readFile(new URL('app.js', frontend), 'utf8');
   const css = await fs.readFile(new URL('styles.css', frontend), 'utf8');
 
-  assert.match(html, /data-route="practice">Практика<\/button>/);
-  assert.match(html, /data-route="coach">Коуч<\/button>/);
+  assert.match(html, /data-route="practice"[^>]*>[\s\S]*?class="nav-label">Практика<\/span><\/button>/);
+  assert.match(html, /data-route="coach"[^>]*>[\s\S]*?class="nav-label">Коуч<\/span><\/button>/);
   assert.match(html, /id="view-learning"[^>]*data-view="learning"/);
   assert.doesNotMatch(html, /data-coach-mode/);
   assert.match(app, /\['practice', 'coach'\]\.includes\(route\) \? 'learning' : route/);
@@ -345,7 +345,7 @@ test('practice and coach are independent hash routes', async () => {
   assert.doesNotMatch(app, /coachMode|setCoachMode/);
   assert.match(css, /#view-learning\s*\{/);
   assert.doesNotMatch(css, /\.sidebar-route-copy\s*\{/);
-  assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.main-nav\s*\{[^}]*overflow-x:\s*auto;/);
+  assert.doesNotMatch(css, /@media \(max-width: 720px\)[\s\S]*\.main-nav\s*\{[^}]*overflow-x:\s*auto;/);
   assert.doesNotMatch(css, /\.coach-mode-switch/);
 });
 
