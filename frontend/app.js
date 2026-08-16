@@ -119,7 +119,12 @@
     const viewRoute = ['practice', 'coach'].includes(route) ? 'learning' : route;
     closeModelPicker();
     $$('.view').forEach(view => view.classList.toggle('is-active', view.dataset.view === viewRoute));
-    $$('.nav-link').forEach(link => link.classList.toggle('is-active', link.dataset.route === route));
+    $$('.nav-link').forEach(link => {
+      const active = link.dataset.route === route;
+      link.classList.toggle('is-active', active);
+      link.toggleAttribute('aria-current', active);
+      if (active) link.setAttribute('aria-current', 'page');
+    });
     if (viewRoute === 'learning') syncLearningRoute(route);
     if (pushHash && location.hash !== `#${route}`) history.pushState(null, '', `#${route}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
