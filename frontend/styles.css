@@ -539,6 +539,7 @@ kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px;
 .candidate-row.is-active { background: var(--acid); color: var(--ink); }
 .candidate-row span, .candidate-row small { font: 9px var(--mono); text-transform: uppercase; letter-spacing: .08em; opacity: .7; }
 .candidate-row strong { line-height: 1.35; }
+.candidate-created-at { font: inherit; letter-spacing: inherit; white-space: nowrap; }
 .empty-queue { padding: 20px; color: #999b93; }
 .candidate-detail { flex: 1; padding: clamp(24px, 4vw, 48px); overflow-y: auto; }
 .candidate-detail.is-empty { display: grid; place-items: center; text-align: center; }

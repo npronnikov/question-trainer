@@ -1501,7 +1501,7 @@
       <button class="candidate-row ${selectedCandidate?.id === item.id ? 'is-active' : ''}" data-candidate="${item.id}">
         <span>${escapeHtml(TARGET_LABELS[item.target] || item.target || '—')} · ${escapeHtml(item.difficulty || item.category || '—')}</span>
         <strong>${escapeHtml(firstCharacters(item.situation || 'Некорректный кандидат'))}</strong>
-        <small>${escapeHtml(item.domain || STATUS_LABELS[item.status] || item.status)}</small>
+        <small>${escapeHtml(item.domain || STATUS_LABELS[item.status] || item.status)} · <time class="candidate-created-at" datetime="${escapeHtml(item.createdAt || '')}">${escapeHtml(formatModerationCreatedAt(item.createdAt) || '—')}</time></small>
       </button>`).join('') : '<p class="empty-queue">В этом статусе кейсов нет.</p>';
     $$('.candidate-row').forEach(button => button.addEventListener('click', () => {
       selectedCandidate = moderationRows.find(item => item.id === button.dataset.candidate);
@@ -1648,6 +1648,16 @@
 
   function formatDate(value) {
     return value ? new Intl.DateTimeFormat('ru', { day: '2-digit', month: 'short' }).format(new Date(value)) : '';
+  }
+
+  function formatModerationCreatedAt(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+    }).formatToParts(date).map(part => [part.type, part.value]));
+    return `${parts.day}/${parts.month} ${parts.hour}:${parts.minute}`;
   }
 
   function formatTime(value) {
